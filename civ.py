@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+import argparse, asyncio, glob, json, logging, struct, threading, time
+from pathlib import Path
+
+import serial
+from aiohttp import web, WSMsgType, WSCloseCode
+
+HERE = Path(__file__).resolve().parent
+ME = 0xE0
+MODES = {'LSB': 0, 'USB': 1, 'AM': 2, 'CW': 3, 'RTTY': 4, 'FM': 5, 'WFM': 6, 'CW-R': 7, 'RTTY-R': 8, 'DV': 0x17}
+RMODES = {v: k for k, v in MODES.items()}
+MODE_LIST = ['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'RTTY', 'RTTY-R', 'FM', 'FM-D', 'WFM', 'DV']
+DATA_OK = ('LSB', 'USB', 'FM', 'AM')		# modes that take the data flag
+NOWIDTH = ('FM', 'WFM', 'DV')		# fixed filters, 1A 03 gets NG
+SPANS = [2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000]		# ± Hz, center mode
+CTL = {		# key: (cmd, sub); 14 xx is a 0..255 BCD level, 16 xx a single byte
+	'vol': (0x14, 0x01), 'rfg': (0x14, 0x02), 'sql': (0x14, 0x03), 'pbt1': (0x14, 0x07), 'pbt2': (0x14, 0x08), 'pre': (0x16, 0x02), 'agc': (0x16, 0x12),
+	'nb': (0x16, 0x22), 'nr': (0x16, 0x40), 'anf': (0x16, 0x41),
+}
+RCTL = {v: k for k, v in CTL.items()}
+SCOPE = {'fix': 0x14, 'edge': 0x16, 'hold': 0x17}		# 27 xx 00 nn: center/fixed, fixed edge 1..3, hold
+RSCOPE = {v: k for k, v in SCOPE.items()}
+BANDS = [(1800, 2000), (3500, 4000), (5330, 5410), (7000, 7300), (10100, 10150), (14000, 14350), (18068, 18168),
+	(21000, 21450), (24890, 24990), (28000, 29700), (50000, 54000), (144000, 148000), (420000, 450000)]		# kHz, US ham bands
+RANGES = [(30, 1600), (1600, 2000), (2000, 6000), (6000, 8000), (8000, 11000), (11000, 15000), (15000, 20000), (20000, 22000),
+	(22000, 26000), (26000, 30000), (30000, 45000), (45000, 60000), (60000, 74800), (74800, 108000), (108000, 137000),
+	(137000, 200000), (400000, 470000)]		# kHz, the 705's fixed-edge ranges, codes 01..17
+MAXW = 1000		# kHz, widest fixed view (assumed, same as the widest center span)
+
+def band_window(khz):		# (range code, lo, hi) for the ham band around khz, or a 1 MHz window outside the bands
+	rng = next(((i + 1, r) for i, r in enumerate(RANGES) if r[0] <= khz < r[1]), None)
+	if not rng:
+		return None
+	lo, hi = next(((a, b) for a, b in BANDS if a <= khz <= b), (khz - MAXW // 2, khz + MAXW // 2))
+	if hi - lo > MAXW:
+		lo = max(lo, min(khz - MAXW // 2, hi - MAXW))
+		hi = lo + MAXW
+	code, (a, b) = rng
+	return code, max(lo, a), min(hi, b)
+log = logging.getLogger('engine')
+
+def bcd(b):		# little-endian BCD
+	return int(bytes(reversed(b)).hex())
+
+def tobcd(n, nbytes=5):
+	return bytes.fromhex(f'{n:0{nbytes * 2}d}')[::-1]
+
+class Rig:
+	def __init__(s, dev, baud, addr, emit):
+		s.ser = serial.Serial(dev, baud, timeout=0.2)
+		s.addr, s.emit = addr, emit		# emit(kind, value) is called from the reader thread
+		s.wlock = threading.Lock()
+		s.hdr, s.sweep = None, []
+		s.base, s.data = '', 0		# mode byte and data flag arrive separately
+		s.last_set = 0.0		# NG only reported right after a user command; polls may NG quietly
+		s.mhz, s.band, s.win = 0.0, False, None		# band view: fixed scope edges that follow the dial
+		threading.Thread(target=s.reader, daemon=True).start()
+
+	def send(s, *body):
+		with s.wlock:
+			s.ser.write(bytes([0xFE, 0xFE, s.addr, ME, *body, 0xFD]))
+
+	def read_fast(s, base=None):		# base '' = mode unknown, skip reads that may NG
+		b = s.base if base is None else base
+		s.send(0x03)
+		s.send(0x04)
+		if b in DATA_OK:
+			s.send(0x1A, 0x06)
+		if b and b not in NOWIDTH:
+			s.send(0x1A, 0x03)
+
+	def read_slow(s):
+		for c in [*CTL.values(), (0x11,), (0x27, 0x19, 0x00), *((0x27, sub, 0x00) for sub in SCOPE.values())]:
+			s.send(*c)
+
+	def reader(s):
+		buf = bytearray()
+		while True:
+			buf += s.ser.read(s.ser.in_waiting or 1)
+			while (end := buf.find(0xFD)) >= 0:
+				f, buf = bytes(buf[:end]), buf[end + 1:]
+				i = f.rfind(b'\xfe\xfe')
+				if i < 0 or len(f) < i + 5 or f[i + 3] == ME:		# junk or our own echo
+					continue
+				try:
+					s.dispatch(f[i + 4], f[i + 5:])
+				except Exception:
+					log.exception(f'frame {f.hex(" ")}')
+
+	def dispatch(s, cmd, d):
+		if cmd in (0x00, 0x03) and len(d) == 5:
+			s.mhz = bcd(d) / 1e6
+			s.emit('mhz', s.mhz)
+			if s.band and s.win:
+				s.follow()
+		elif cmd in (0x01, 0x04) and d:
+			s.base = RMODES.get(d[0], f'{d[0]:02X}')
+			s.emit_mode()
+			if len(d) > 1:
+				s.emit('fil', d[1])
+		elif cmd == 0x1A and len(d) >= 2 and d[0] == 0x06:
+			s.data = d[1]
+			s.emit_mode()
+		elif cmd == 0x1A and len(d) == 2 and d[0] == 0x03:
+			i = int(d[1:].hex())
+			s.emit('width', (i + 1) * 200 if s.base == 'AM' else (i + 1) * 50 if i < 10 else (i - 4) * 100)
+		elif cmd in (0x14, 0x16) and len(d) >= 2 and (cmd, d[0]) in RCTL:
+			s.emit(RCTL[cmd, d[0]], int(d[1:3].hex()) if cmd == 0x14 else d[1])
+		elif cmd == 0x11 and len(d) == 1:
+			s.emit('att', int(d[0] != 0))
+		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x02:
+			v = int(d[1:].hex())		# 0 = S0, 120 = S9, 241 = S9+60
+			s.emit('smeter', round(v / 120 * 54 - 54 if v <= 120 else (v - 120) / 121 * 60))
+		elif cmd == 0x27 and len(d) == 5 and d[0] == 0x19:		# ref level: 00, dB BCD (xx.xx), sign
+			s.emit('ref', int(d[2:4].hex()) / 100 * (-1 if d[4] else 1))
+		elif cmd == 0x27 and len(d) == 3 and d[0] in RSCOPE:
+			s.emit(RSCOPE[d[0]], int(d[2:].hex()))
+		elif cmd == 0x27 and len(d) >= 4 and d[0] == 0x00:
+			s.scope(d)
+		elif cmd == 0xFA and time.monotonic() - s.last_set < 0.5:
+			s.emit('error', 'Radio rejected the last command')
+
+	def apply_band(s):
+		w = band_window(round(s.mhz * 1000))
+		if not w:
+			s.emit('error', 'No scope range covers this frequency')
+			return
+		s.set_win(*w)
+
+	def follow(s):		# pan the view just past the dial when it leaves; rebuild it after a big jump
+		khz, (lo, hi) = round(s.mhz * 1000), s.win
+		w = hi - lo
+		if lo <= khz <= hi:
+			return
+		if khz < lo - w or khz > hi + w:
+			return s.apply_band()
+		m = max(1, w // 50)		# land a little inside the edge
+		lo += khz + m - hi if khz > hi else khz - m - lo
+		code, (a, b) = next(((i + 1, r) for i, r in enumerate(RANGES) if r[0] <= khz < r[1]), (None, (0, 0)))
+		if not code:
+			return s.apply_band()
+		lo = max(a, min(lo, b - w))		# stay inside the 705's edge range
+		s.set_win(code, lo, min(lo + w, b))
+
+	def set_win(s, code, lo, hi):
+		s.win = (lo, hi)
+		s.send(0x27, 0x1E, int(str(code), 16), 0x01, *tobcd(lo * 1000), *tobcd(hi * 1000))		# overwrite Edge 1
+		s.send(0x27, 0x16, 0x00, 0x01)
+		s.send(0x27, 0x14, 0x00, 0x01)
+		s.send(0x27, 0x14, 0x00)
+
+	def emit_mode(s):
+		if s.base:
+			s.emit('mode', s.base + ('-D' if s.data and s.base in DATA_OK else ''))
+
+	def scope(s, d):
+		seq, smax = bcd(d[2:3]), bcd(d[3:4])
+		if seq == 1 and len(d) >= 15:
+			mode, f1, f2 = d[4], bcd(d[5:10]), bcd(d[10:15])
+			s.hdr = (f1 - f2, f1 + f2, f2) if mode == 0 else (f1, f2, None)		# center ± span, or fixed edges
+			s.sweep = []
+		elif s.hdr and seq == len(s.sweep) + 2:
+			s.sweep.append(d[4:])
+			if seq == smax:
+				lo, hi, span = s.hdr
+				s.emit('scope', struct.pack('<II', lo, hi) + b''.join(s.sweep))
+				if span:
+					s.emit('span', span)
+				s.hdr = None
+		else:
+			s.hdr = None		# dropped a frame; wait for the next header
+
+	def set(s, k, v):
+		s.last_set = time.monotonic()
+		if k == 'mhz':
+			s.send(0x05, *tobcd(round(float(v) * 1e6)))
+			s.send(0x03)		# read back so the UI settles immediately
+		elif k == 'mode':
+			base, data = v.removesuffix('-D'), v.endswith('-D')
+			s.send(0x06, MODES[base])
+			if base in DATA_OK:
+				s.send(0x1A, 0x06, *((0x01, 0x01) if data else (0x00, 0x00)))		# data mode, FIL1
+			s.read_fast(base)
+		elif k == 'fil':
+			f = int(v)
+			if s.data and s.base in DATA_OK:
+				s.send(0x1A, 0x06, 0x01, f)		# in data mode the filter rides on the data command
+			else:
+				s.send(0x06, MODES[s.base], f)
+			s.read_fast()
+		elif k == 'ref':
+			n = round(abs(float(v)) * 2) * 50		# 0.5 dB steps, hundredths
+			s.send(0x27, 0x19, 0x00, *bytes.fromhex(f'{n:04d}'), 0x01 if float(v) < 0 else 0x00)
+			s.send(0x27, 0x19, 0x00)
+		elif k == 'vfo':		# no read command for the selected VFO, so the engine remembers what it set
+			s.send(0x07, 0x00 if v == 'A' else 0x01)
+			s.emit('vfo', 'A' if v == 'A' else 'B')
+			s.read_fast('')		# the other VFO's mode isn't known yet
+		elif k == 'band':
+			s.band = bool(int(v))
+			s.emit('band', int(s.band))
+			if s.band:
+				s.apply_band()
+			else:
+				s.win = None
+				s.send(0x27, 0x14, 0x00, 0x00)
+				s.send(0x27, 0x14, 0x00)
+		elif k in SCOPE:
+			s.send(0x27, SCOPE[k], 0x00, int(v))
+			s.send(0x27, SCOPE[k], 0x00)
+		elif k == 'span':
+			s.send(0x27, 0x15, 0x00, *tobcd(int(v)))
+		elif k == 'att':
+			s.send(0x11, 0x20 if int(v) else 0x00)
+			s.send(0x11)
+		elif k in CTL:
+			cmd, sub = CTL[k]
+			v = int(v)
+			s.send(cmd, sub, *(bytes.fromhex(f'{v:04d}') if cmd == 0x14 else [v]))
+			s.send(cmd, sub)
+		else:
+			raise KeyError(k)
+
+#=====================================================================
+
+rig = queue = None
+state = {'rig': 'IC-705', 'mhz': 0.0, 'mode': '', 'span': 0}
+clients = set()
+
+async def broadcast(m):
+	for ws in list(clients):
+		try:
+			await (ws.send_bytes(m) if isinstance(m, bytes) else ws.send_json(m))
+		except ConnectionError:
+			clients.discard(ws)
+
+async def pump():
+	while True:
+		kind, v = await queue.get()
+		if kind == 'scope':
+			await broadcast(v)
+		elif kind == 'smeter':
+			await broadcast({'type': 'smeter', 'db': v})
+		elif kind == 'error':
+			await broadcast({'type': 'error', 'msg': v})
+		elif state.get(kind) != v:
+			state[kind] = v
+			await broadcast({'type': 'state', 'state': state})
+
+async def poll():
+	n = 0
+	while True:
+		if clients and time.monotonic() - rig.last_set > 0.5:		# stay out of the way of user commands
+			rig.send(0x15, 0x02)
+			if n % 4 == 0:
+				rig.read_fast()
+			elif n % 4 == 2:
+				rig.read_slow()
+			n += 1
+		await asyncio.sleep(0.25)
+
+async def ws_handler(request):
+	ws = web.WebSocketResponse(heartbeat=20)
+	await ws.prepare(request)
+	clients.add(ws)
+	await ws.send_json({'type': 'caps', 'rig': state['rig'], 'modes': MODE_LIST, 'spans': SPANS})
+	await ws.send_json({'type': 'state', 'state': state})
+	try:
+		async for msg in ws:
+			if msg.type != WSMsgType.TEXT:
+				continue
+			try:
+				m = json.loads(msg.data)
+				if m.get('cmd') == 'set':
+					rig.set(m['key'], m['value'])
+				else:
+					raise ValueError(f'unknown command {m.get("cmd")}')
+			except Exception as e:
+				await ws.send_json({'type': 'error', 'msg': repr(e)})
+	finally:
+		clients.discard(ws)
+	return ws
+
+def page(name):
+	async def h(request):
+		return web.FileResponse(HERE / name, headers={'Cache-Control': 'no-cache'})
+	return h
+
+async def close_clients(app):		# open websockets would otherwise hold shutdown for a minute
+	for ws in list(clients):
+		await ws.close(code=WSCloseCode.GOING_AWAY, message=b'engine shutdown')
+
+async def lifecycle(app):
+	global rig, queue
+	a, loop = app['args'], asyncio.get_running_loop()
+	queue = asyncio.Queue()
+	rig = Rig(a.dev, a.baud, a.addr, lambda k, v: loop.call_soon_threadsafe(queue.put_nowait, (k, v)))
+	rig.send(0x27, 0x10, 0x01)		# scope on
+	rig.send(0x27, 0x11, 0x01)		# scope data out on CI-V
+	rig.read_fast()
+	rig.read_slow()
+	tasks = [asyncio.create_task(pump()), asyncio.create_task(poll())]
+	yield
+	for t in tasks:
+		t.cancel()
+	rig.send(0x27, 0x11, 0x00)
+
+#=====================================================================
+
+if __name__ == '__main__':
+	ids = glob.glob('/dev/serial/by-id/*IC-705*if00')
+	ap = argparse.ArgumentParser()
+	ap.add_argument('--dev', default=ids[0] if ids else '/dev/ttyACM0')
+	ap.add_argument('--baud', type=int, default=115200)
+	ap.add_argument('--addr', type=lambda x: int(x, 0), default=0xA4)
+	ap.add_argument('--host', default='0.0.0.0')
+	ap.add_argument('--port', type=int, default=8700)
+	a = ap.parse_args()
+
+	logging.basicConfig(level=logging.INFO, format='%(levelname)-6s%(message)s')
+	log.info(f'rig on {a.dev}')
+	app = web.Application()
+	app['args'] = a
+	app.router.add_get('/', page('radcon.html'))
+	app.router.add_get('/radcon.js', page('radcon.js'))
+	app.router.add_get('/ws', ws_handler)
+	app.cleanup_ctx.append(lifecycle)
+	app.on_shutdown.append(close_clients)
+	web.run_app(app, host=a.host, port=a.port, access_log=None)
