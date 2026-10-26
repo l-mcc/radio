@@ -7,6 +7,7 @@
 #include <ncurses.h>
 #include "control.h"
 
+extern int ssb_bw_index;		// bandwidth preset 0-3 (bw command)
 extern int ssb_bw_low;
 extern int ssb_bw_high;
 extern bool wf_on;		// waterfall wanted; the receiver creates or drops it

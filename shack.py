@@ -7,7 +7,7 @@ from pathlib import Path
 import serial
 from PyQt6.QtCore import pyqtSignal, QProcess, Qt, QTimer
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QGridLayout, QLabel, QMainWindow, QMessageBox, QProgressBar, QSpinBox, QWidget
+from PyQt6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSpinBox, QWidget
 
 import civ
 
@@ -43,12 +43,15 @@ def quiet(w, f, *a):		# change a widget from the radio's side without echoing it
 
 class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines on its stdout; same face as civ.Rig
 	MODES = ['LSB', 'USB', 'AM', 'WBFM']
+	BANDWIDTHS = ['Narrow voice  1.8 kHz', 'Normal voice  2.8 kHz', 'Wide voice  3.1 kHz', 'Digital  2.8 kHz']		# bw 0-3, SSB only
+	SWITCHES = {'notch': 'RF notch', 'dab': 'DAB notch', 'hdr': 'HDR', 'digi': 'Digital out', 'nb': 'Noise blanker'}		# rx command: button
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
 
 	def __init__(self, path, emit):
 		self.emit, self.ok, self.tx = emit, False, 0		# ok once rx has sent its first state
+		self.state = {}		# rx's last state line
 		self.last = ''		# last stderr line, for the box if rx dies
 		self.p = QProcess()
 		self.p.setWorkingDirectory(str(Path(path).parent))		# index.html, app.js if the waterfall comes back
@@ -65,13 +68,23 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 		while self.p.canReadLine():
 			m = json.loads(bytes(self.p.readLine()).decode())
 			if m['type'] == 'state':
-				self.ok = True
-				self.emit('mhz', m['state']['mhz'])
-				for k in ('mode', 'v', 'if', 'lna', 'ant'):
-					self.emit(k, m['state'][k])
-				self.emit('ovl', (m['state']['ovl'], m['state']['ovln']))
-			elif m['type'] == 'notice':
+				self.ok, self.state = True, m['state']
+				self.show()
+			elif m['type'] == 'notice':		# every command gets one; a refused command changes no state, so put the controls back
 				self.emit('error', m['msg'])
+				self.show()
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def show(self):		# rx's last state -> the window
+		st = self.state
+		if not st:
+			return
+		self.emit('mhz', st['mhz'])
+		for k in ('mode', 'v', 'if', 'lna', 'ant', 'bw', *self.SWITCHES):
+			self.emit(k, st[k])
+		self.emit('ovl', (st['ovl'], st['ovln']))
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -106,6 +119,14 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			self.send(f'{k} {v}')
 		elif k == 'ant':
 			self.send(f'ant {v.lower()}')
+		elif k == 'bw':
+			self.send(f'bw {v}')
+		elif k in self.SWITCHES:		# on/off
+			self.send(f'{k} {int(v)}')
+		elif k == 'nbdb':		# blanker level; rx turns the blanker on at it
+			self.send(f'nb {v}')
+		elif k == 'save':
+			self.send('s')
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -159,7 +180,23 @@ class Shack(QMainWindow):
 		self.ant.addItems(['A', 'B', 'C'])
 		self.ant.activated.connect(lambda i: self.rig and self.rig.set('ant', self.ant.itemText(i)))
 		self.ovl = QLabel()		# RF overload: blank until the first one
-		self.rsp = (self.vol, self.ifr, self.lna, self.ant, self.ovl)		# RSPdx-only rows
+		self.bw = QComboBox()
+		self.bw.addItems(Rx.BANDWIDTHS)
+		self.bw.activated.connect(lambda i: self.rig and self.rig.set('bw', i))
+		self.sw = {}		# rx command: toggle button
+		switches = QHBoxLayout()
+		for k, name in Rx.SWITCHES.items():
+			b = self.sw[k] = QPushButton(name, checkable=True)
+			b.setStyleSheet('QPushButton:checked { background: #2a7d2a; color: white; font-weight: bold }')		# on = green
+			b.clicked.connect(lambda on, k=k: self.rig and self.rig.set(k, on))		# clicked, not toggled: the radio's own updates don't echo back
+			switches.addWidget(b)
+		self.nbdb = QSpinBox(minimum=8, maximum=20, value=12, suffix=' dB', keyboardTracking=False, toolTip='Blanker trigger level; changing it turns the blanker on')
+		self.nbdb.valueChanged.connect(lambda v: self.rig and self.rig.set('nbdb', v))
+		switches.addWidget(self.nbdb)
+		self.save = QPushButton('Save', toolTip='Store these settings for this frequency and mode, and start here next time (like s in the TUI)')
+		self.save.clicked.connect(lambda: self.rig and self.rig.set('save', 1))
+		switches.addWidget(self.save)
+		self.rsp = (self.vol, self.ifr, self.lna, self.ant, self.ovl, self.bw, *self.sw.values(), self.nbdb, self.save)		# RSPdx-only controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')
 		self.tx = QLabel('RX')
 		self.tx.setFont(QFont('monospace', 16, QFont.Weight.Bold))
@@ -168,9 +205,11 @@ class Shack(QMainWindow):
 
 		g = QGridLayout()
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol),
-				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Overload', self.ovl), ('Signal', self.smeter), ('PTT', self.tx)]):
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('Signal', self.smeter), ('PTT', self.tx)]):
 			g.addWidget(QLabel(name), row, 0)
 			g.addWidget(w, row, 1)
+		row += 1
+		g.addLayout(switches, row, 0, 1, 2)
 		g.setRowStretch(row + 1, 1)		# spare height goes below the rows, not into them
 		box = QWidget()
 		box.setLayout(g)
@@ -247,6 +286,8 @@ class Shack(QMainWindow):
 		self.radio.setCurrentText('none')
 		self.clients.setText('')
 		self.on_rig('ovl', (0, 0))
+		for b in self.sw.values():
+			b.setChecked(False)
 		self.on_rig('ptt', 0)
 		for w in (self.freq, self.mode, self.smeter, self.tx, *self.rsp):
 			w.setEnabled(False)
@@ -284,6 +325,16 @@ class Shack(QMainWindow):
 				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rx's call, not a command
 		elif k == 'mode' and self.mode.findText(v) >= 0:
 			self.mode.setCurrentText(v)
+			if isinstance(self.rig, Rx):		# as in the TUI: bandwidth presets are SSB only, the blanker isn't in WBFM
+				self.bw.setEnabled(v in ('LSB', 'USB'))
+				self.sw['nb'].setEnabled(v != 'WBFM')
+				self.nbdb.setEnabled(v != 'WBFM')
+		elif k == 'bw':
+			self.bw.setCurrentIndex(v)
+		elif k in self.sw:
+			self.sw[k].setChecked(bool(v))
+			if k == 'nb' and v:		# nb carries the level when on, 0 when off
+				quiet(self.nbdb, self.nbdb.setValue, v)
 		elif k == 'v':
 			quiet(self.vol, self.vol.setValue, v)
 		elif k in ('if', 'lna'):

@@ -377,8 +377,8 @@ bool Control::command(const std::string& line) {
 	if (op == "q" || op == "quit") return false;
 	if (op == "status") { status(); notice_ = "Settings refreshed"; return true; }
 	if (op == "help" || op == "h" || op == "?") {
-		notice_ = "f MHz | m lsb/usb/am/wbfm | v volume | if dB | lna state | ant a/b/c | hdr 0/1 | notch 0/1 | dab 0/1 | ref dB | zoom 0-2 | digi 0/1 | nb 0/1/dB | s [name] | q";
-		if (!ui_active_) fprintf(stderr, "Commands: f <MHz>, m <lsb|usb|am|wbfm>, v <volume>, g <IF-reduction> <LNA>, if <dB>, lna <state>, ant <a|b|c>, hdr <0|1>, notch <0|1>, dab <0|1>, ref <dB>, zoom <0-2>, digi <0|1>, nb <0|1|8-20>, s/save [name], status, q\n");
+		notice_ = "f MHz | m lsb/usb/am/wbfm | v volume | if dB | lna state | ant a/b/c | hdr 0/1 | notch 0/1 | dab 0/1 | ref dB | zoom 0-2 | bw 0-3 | digi 0/1 | nb 0/1/dB | s [name] | q";
+		if (!ui_active_) fprintf(stderr, "Commands: f <MHz>, m <lsb|usb|am|wbfm>, v <volume>, g <IF-reduction> <LNA>, if <dB>, lna <state>, ant <a|b|c>, hdr <0|1>, notch <0|1>, dab <0|1>, ref <dB>, zoom <0-2>, bw <0-3>, digi <0|1>, nb <0|1|8-20>, s/save [name], status, q\n");
 		return true;
 	}
 
@@ -386,6 +386,15 @@ bool Control::command(const std::string& line) {
 		std::string name;
 		std::getline(in >> std::ws, name);
 		notice_ = save(clean_name(name)) ? "Settings saved" : "Save failed";
+		return true;
+	}
+
+	if (op == "bw") {		// SSB bandwidth preset: 0 narrow voice, 1 normal voice, 2 wide voice, 3 digital
+		int i;
+		if ((in >> i) && !(in >> extra) && i >= 0 && i <= 3) {
+			set_ssb_bw(i);
+			notice_ = "Bandwidth updated";
+		} else notice_ = "Usage: bw 0-3";
 		return true;
 	}
 
