@@ -7,7 +7,7 @@ from pathlib import Path
 import serial
 from PyQt6.QtCore import pyqtSignal, QProcess, Qt, QTimer
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QGridLayout, QLabel, QMainWindow, QMessageBox, QProgressBar, QWidget
+from PyQt6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QGridLayout, QLabel, QMainWindow, QMessageBox, QProgressBar, QSpinBox, QWidget
 
 import civ
 
@@ -16,6 +16,23 @@ log = logging.getLogger('shack')		# set up in main by utils.setup_logging
 
 def sunits(db):		# S9-relative dB -> S7 / S9+20
 	return f'S{max(0, (db + 54) // 6)}' if db <= 0 else f'S9+{db}'
+
+'''-------------------------------------------------------------------
+-------------------------------------------------------------------'''
+
+def lna_max(mhz):		# RSPdx LNA states by frequency, as tui.cpp has them
+	for top, n in ((12, 18), (50, 19), (60, 24), (250, 26), (420, 27), (1000, 20)):
+		if mhz < top:
+			return n
+	return 18
+
+'''-------------------------------------------------------------------
+-------------------------------------------------------------------'''
+
+def quiet(w, f, *a):		# change a widget from the radio's side without echoing it back as a command
+	w.blockSignals(True)
+	f(*a)
+	w.blockSignals(False)
 
 '''===================================================================================================================================================
 
@@ -50,7 +67,8 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			if m['type'] == 'state':
 				self.ok = True
 				self.emit('mhz', m['state']['mhz'])
-				self.emit('mode', m['state']['mode'])
+				for k in ('mode', 'v', 'if', 'lna', 'ant'):
+					self.emit(k, m['state'][k])
 			elif m['type'] == 'notice':
 				self.emit('error', m['msg'])
 
@@ -81,6 +99,12 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			self.send(f'f {v:.6f}')
 		elif k == 'mode':
 			self.send(f'm {v.lower()}')
+		elif k == 'v':
+			self.send(f'v {v:.3f}')
+		elif k in ('if', 'lna'):
+			self.send(f'{k} {v}')
+		elif k == 'ant':
+			self.send(f'ant {v.lower()}')
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -124,6 +148,16 @@ class Shack(QMainWindow):
 		self.freq.editingFinished.connect(lambda: self.freq.lineEdit().setModified(False))
 		self.mode = QComboBox()
 		self.mode.activated.connect(lambda i: self.rig and self.rig.set('mode', self.mode.itemText(i)))
+		self.vol = QDoubleSpinBox(decimals=3, minimum=0, maximum=2, singleStep=0.005, keyboardTracking=False)
+		self.vol.valueChanged.connect(lambda v: self.rig and self.rig.set('v', v))
+		self.ifr = QSpinBox(minimum=20, maximum=59, suffix=' dB', keyboardTracking=False)		# IF gain reduction
+		self.ifr.valueChanged.connect(lambda v: self.rig and self.rig.set('if', v))
+		self.lna = QSpinBox(minimum=0, maximum=18, keyboardTracking=False)		# LNA state; top end follows the band
+		self.lna.valueChanged.connect(lambda v: self.rig and self.rig.set('lna', v))
+		self.ant = QComboBox()
+		self.ant.addItems(['A', 'B', 'C'])
+		self.ant.activated.connect(lambda i: self.rig and self.rig.set('ant', self.ant.itemText(i)))
+		self.rsp = (self.vol, self.ifr, self.lna, self.ant)		# RSPdx-only rows
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')
 		self.tx = QLabel('RX')
 		self.tx.setFont(QFont('monospace', 16, QFont.Weight.Bold))
@@ -131,7 +165,8 @@ class Shack(QMainWindow):
 		self.statusBar().addPermanentWidget(self.clients)
 
 		g = QGridLayout()
-		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Signal', self.smeter), ('PTT', self.tx)]):
+		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol),
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Signal', self.smeter), ('PTT', self.tx)]):
 			g.addWidget(QLabel(name), row, 0)
 			g.addWidget(w, row, 1)
 		box = QWidget()
@@ -180,7 +215,7 @@ class Shack(QMainWindow):
 		if not Path(self.a.rx).is_file():
 			return self.oops(f"Can't find rx at {self.a.rx}.\n\nIs it built? (./build.sh)")
 		self.rig = Rx(self.a.rx, self.got.emit)
-		self.show_radio('RSPdx', Rx.MODES, 2000, (self.freq, self.mode))		# no signal meter or PTT from rx yet
+		self.show_radio('RSPdx', Rx.MODES, 2000, (self.freq, self.mode, *self.rsp))		# no signal meter or PTT from rx yet
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -209,7 +244,7 @@ class Shack(QMainWindow):
 		self.radio.setCurrentText('none')
 		self.clients.setText('')
 		self.on_rig('ptt', 0)
-		for w in (self.freq, self.mode, self.smeter, self.tx):
+		for w in (self.freq, self.mode, self.smeter, self.tx, *self.rsp):
 			w.setEnabled(False)
 
 	'''-------------------------------------------------------------------
@@ -241,8 +276,17 @@ class Shack(QMainWindow):
 			self.freq.blockSignals(True)
 			self.freq.setValue(v)
 			self.freq.blockSignals(False)
+			if isinstance(self.rig, Rx):
+				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rx's call, not a command
 		elif k == 'mode' and self.mode.findText(v) >= 0:
 			self.mode.setCurrentText(v)
+		elif k == 'v':
+			quiet(self.vol, self.vol.setValue, v)
+		elif k in ('if', 'lna'):
+			w = self.ifr if k == 'if' else self.lna
+			quiet(w, w.setValue, v)
+		elif k == 'ant':
+			self.ant.setCurrentText(v.upper())
 		elif k == 'smeter':
 			self.smeter.setValue(max(-54, min(60, v)))
 			self.smeter.setFormat(sunits(v))
