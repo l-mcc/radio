@@ -1,9 +1,0 @@
-rx
-*.o
-settings.db
-rsp.log
-decode.json
-cw.txt
-rtty.txt
-rec.wav
-__pycache__/
