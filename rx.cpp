@@ -55,6 +55,16 @@ private:
 	std::vector<int16_t> pcm;
 };
 
+std::string state_json(const Control::State &s) {		// rx -n stdout line; same fields as the waterfall page gets, plus nb and digi
+	std::string mode = s.mode;
+	for (auto &ch : mode) ch = toupper(ch);
+	char b[400];
+	snprintf(b, sizeof b, "{\"type\":\"state\",\"state\":{\"mhz\":%.6f,\"mode\":\"%s\",\"v\":%.2f,\"if\":%d,\"lna\":%d,\"ant\":\"%c\","
+		"\"notch\":%d,\"dab\":%d,\"hdr\":%d,\"ovl\":%d,\"ref\":%.1f,\"zoom\":%d,\"nb\":%d,\"digi\":%d}}", s.mhz, mode.c_str(), s.volume,
+		s.if_reduction, s.lna, s.antenna, s.rf_notch, s.dab_notch, s.hdr, s.overload, s.ref, s.zoom, nb_on ? nb_db : 0, int(digi_on));
+	return b;
+}
+
 double thread_cpu_seconds() {
 	timespec ts;
 	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
@@ -72,10 +82,10 @@ void signal_handler(int) {
 
 int main(int argc, char** argv) {
 	auto wall_start = std::chrono::steady_clock::now();
-	bool want_wf = false;
-	for (int i = 1; i < argc; )		// -w anywhere on the line: start with the waterfall on
-		if (std::strcmp(argv[i], "-w") == 0) {
-			want_wf = true;
+	bool want_wf = false, headless = false;
+	for (int i = 1; i < argc; )		// -w: start with the waterfall on; -n: no TUI, driven by shack.py (stdin commands, stdout JSON)
+		if (std::strcmp(argv[i], "-w") == 0 || std::strcmp(argv[i], "-n") == 0) {
+			(argv[i][1] == 'w' ? want_wf : headless) = true;
 			std::copy(argv + i + 1, argv + argc, argv + i);
 			argv[--argc] = nullptr;
 		} else ++i;
@@ -83,12 +93,14 @@ int main(int argc, char** argv) {
 	double mhz = argc > 1 ? std::atof(argv[1]) : 7.175;
 	std::string mode = argc > 2 && !raw ? argv[2] : "";		// empty: Control picks (last save, saved at mhz, band plan)
 	float vol = 0.10f;
-	if (argc > 3 || (!mode.empty() && !make_demod(mode, vol))) {
-		fprintf(stderr, "Usage: rx [-w] [frequency_MHz] [lsb|usb|am|wbfm|raw]\n");
+	if (argc > 3 || (headless && raw) || (!mode.empty() && !make_demod(mode, vol))) {
+		fprintf(stderr, "Usage: rx [-w] [-n] [frequency_MHz] [lsb|usb|am|wbfm|raw]   (-n and raw both want stdout)\n");
 		return 1;
 	}
 
 	std::signal(SIGINT, signal_handler);
+	std::signal(SIGTERM, signal_handler);		// shack.py stopping rx: same clean shutdown as Ctrl-C
+	if (headless) std::signal(SIGPIPE, SIG_IGN);		// shack.py gone: writes fail, stdin hits EOF, rx quits
 
 	RSP rsp(mhz * 1e6 + 10000);
 	if (!rsp.open()) return 1;
@@ -119,7 +131,10 @@ int main(int argc, char** argv) {
 	if (!rsp.start()) return 1;
 
 	TUI tui(control);
-	bool using_tui = !raw && tui.open();
+	bool using_tui = !raw && !headless && tui.open();
+	if (headless) control.set_ui_active(true);		// shack.py gets notices on stdout, no per-command chatter on stderr
+	std::string last_state;
+	auto last_out = std::chrono::steady_clock::now();
 	speaker->set_quiet(using_tui);
 	auto last_meter = std::chrono::steady_clock::now();
 	auto last_report = last_meter;
@@ -145,6 +160,7 @@ int main(int argc, char** argv) {
 
 	while (running) {
 		if (!(using_tui ? tui.poll() : control.poll())) break;
+		if (headless && control.stdin_closed()) break;		// shack.py closed the pipe or died
 		auto s = control.state();
 		if (s.mode != mode) {
 			if (!demod->set_mode(s.mode)) {		// lsb <-> usb happens in place; anything else gets a new chain
@@ -181,6 +197,14 @@ int main(int argc, char** argv) {
 		demod->tap = bool(digi);
 		demod->nb = nb_on;
 		demod->nb_db = nb_db;
+		if (headless && !want_wf) wf_on = false;		// a saved station's waterfall on/off doesn't apply under shack.py
+		if (headless && now - last_out >= std::chrono::milliseconds(50)) {
+			auto st = state_json(control.state()), note = control.take_notice();
+			if (st != last_state) printf("%s\n", (last_state = st).c_str());
+			if (!note.empty()) printf("{\"type\":\"notice\",\"msg\":\"%s\"}\n", note.c_str());		// Control's notices have no quotes
+			fflush(stdout);
+			last_out = now;
+		}
 		if (wf_on != bool(wf)) wf = wf_on ? std::make_unique<Waterfall>(demod->zooms) : nullptr;
 		if (wf) wf->poll(control);		// page commands, retunes
 		if (now - last_meter >= std::chrono::milliseconds(250)) {
@@ -196,7 +220,7 @@ int main(int argc, char** argv) {
 		}
 		if (now - last_report >= std::chrono::seconds(5)) {
 			auto qs = queue.stats(true);
-			if (!using_tui)
+			if (!using_tui && !headless)
 				fprintf(stderr, "Queue: depth=%zu peak=%zu dropped=%llu\n", qs.depth, qs.peak, (unsigned long long)qs.dropped);
 			last_report = now;
 		}

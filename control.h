@@ -43,6 +43,8 @@ public:
 	State state() const;
 	void set_ui_active(bool active) { ui_active_ = active; }
 	const std::string& notice() const { return notice_; }
+	std::string take_notice() { std::string n; n.swap(notice_); return n; }		// rx -n: each notice goes out once
+	bool stdin_closed() const { return stdin_closed_; }
 
 	struct Bookmark { int64_t hz; std::string mode, name; int hits; };		// one settings row
 	std::vector<Bookmark> bookmarks();		// most picked first, then by frequency
