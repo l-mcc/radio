@@ -386,6 +386,29 @@ bool Control::command(const std::string& line) {
 		std::string name;
 		std::getline(in >> std::ws, name);
 		notice_ = save(clean_name(name)) ? "Settings saved" : "Save failed";
+		list_wanted_ = true;
+		return true;
+	}
+
+	if (op == "bm") {		// rx -n: send the bookmark list
+		list_wanted_ = true;
+		return true;
+	}
+
+	if (op == "bmpick" || op == "bmname" || op == "bmdel") {		// bmpick HZ MODE, bmname HZ MODE [name], bmdel HZ MODE
+		int64_t hz = 0;
+		std::string m, name;
+		if (!(in >> hz >> m)) { notice_ = "Usage: " + op + " HZ MODE"; return true; }
+		std::getline(in >> std::ws, name);
+		for (auto &b : bookmarks())
+			if (b.hz == hz && b.mode == m) {
+				if (op == "bmpick") pick(b);
+				else if (op == "bmname") notice_ = rename(b, name) ? "Bookmark renamed" : "Rename failed";
+				else notice_ = forget(b) ? "Bookmark deleted" : "Delete failed";
+				list_wanted_ = true;		// hits, names or rows changed
+				return true;
+			}
+		notice_ = "No such bookmark";
 		return true;
 	}
 

@@ -66,6 +66,25 @@ std::string state_json(const Control::State &s) {		// rx -n stdout line; same fi
 	return b;
 }
 
+std::string json_text(const std::string &t) {		// a quoted JSON string; bookmark names are user text
+	std::string o = "\"";
+	for (unsigned char c : t)
+		if (c == '"' || c == '\\') o += '\\', o += c;
+		else if (c < 0x20) { char b[8]; snprintf(b, sizeof b, "\\u%04x", c); o += b; }
+		else o += c;
+	return o + '"';
+}
+
+std::string bookmarks_json(Control &c) {		// rx -n: the whole list, most picked first; an empty name gets its band label
+	std::string o = "{\"type\":\"bookmarks\",\"list\":[";
+	for (auto &b : c.bookmarks()) {
+		char f[96];
+		snprintf(f, sizeof f, "{\"hz\":%lld,\"mode\":\"%s\",\"hits\":%d,\"name\":", static_cast<long long>(b.hz), b.mode.c_str(), b.hits);
+		o += (o.back() == '[' ? "" : ",") + std::string(f) + json_text(b.name.empty() ? band_name(b.hz / 1e6) : b.name) + "}";
+	}
+	return o + "]}";
+}
+
 double thread_cpu_seconds() {
 	timespec ts;
 	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
@@ -202,7 +221,8 @@ int main(int argc, char** argv) {
 		if (headless && now - last_out >= std::chrono::milliseconds(50)) {
 			auto st = state_json(control.state()), note = control.take_notice();
 			if (st != last_state) printf("%s\n", (last_state = st).c_str());
-			if (!note.empty()) printf("{\"type\":\"notice\",\"msg\":\"%s\"}\n", note.c_str());		// Control's notices have no quotes
+			if (!note.empty()) printf("{\"type\":\"notice\",\"msg\":%s}\n", json_text(note).c_str());
+			if (control.take_list_request()) printf("%s\n", bookmarks_json(control).c_str());
 			fflush(stdout);
 			last_out = now;
 		}
@@ -214,6 +234,12 @@ int main(int argc, char** argv) {
 			if (using_tui && demod->channel_count)
 				tui.set_channel_db(10.0 * std::log10(std::max(1e-15, demod->channel_power / demod->channel_count)));
 			if (using_tui) tui.set_nb_rate(demod->nb_pulses / std::chrono::duration<double>(now - last_meter).count());
+			if (headless && meter_count) {		// same numbers as the TUI's meters: ADC (broadband) and signal (passband) in dBFS, blanker pulses/s
+				printf("{\"type\":\"meter\",\"adc\":%.1f,\"sig\":%.1f,\"nbr\":%.1f}\n", 10.0 * std::log10(std::max(1e-12, meter_power / meter_count)),
+					demod->channel_count ? 10.0 * std::log10(std::max(1e-15, demod->channel_power / demod->channel_count)) : -150.0,
+					demod->nb_pulses / std::chrono::duration<double>(now - last_meter).count());
+				fflush(stdout);
+			}
 			demod->nb_pulses = 0;
 			meter_power = demod->channel_power = 0;
 			meter_count = demod->channel_count = 0;

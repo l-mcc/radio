@@ -45,6 +45,7 @@ public:
 	const std::string& notice() const { return notice_; }
 	std::string take_notice() { std::string n; n.swap(notice_); return n; }		// rx -n: each notice goes out once
 	bool stdin_closed() const { return stdin_closed_; }
+	bool take_list_request() { bool r = list_wanted_; list_wanted_ = false; return r; }		// rx -n: bookmark list changed or asked for
 
 	struct Bookmark { int64_t hz; std::string mode, name; int hits; };		// one settings row
 	std::vector<Bookmark> bookmarks();		// most picked first, then by frequency
@@ -74,6 +75,7 @@ private:
 	std::string input_;
 	bool stdin_closed_ = false;
 	bool ui_active_ = false;
+	bool list_wanted_ = false;
 	bool picking_ = false;		// load() during pick(): the row's waterfall on/off applies too
 	std::string notice_;
 	std::chrono::steady_clock::time_point last_poll_{};

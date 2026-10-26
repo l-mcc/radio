@@ -7,7 +7,8 @@ from pathlib import Path
 import serial
 from PyQt6.QtCore import pyqtSignal, QProcess, Qt, QTimer
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar, QPushButton, QSpinBox, QWidget
+from PyQt6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
+	QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QWidget)
 
 import civ
 
@@ -68,11 +69,17 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 		while self.p.canReadLine():
 			m = json.loads(bytes(self.p.readLine()).decode())
 			if m['type'] == 'state':
+				if not self.ok:
+					self.send('bm')		# first state: rx is up, ask for the bookmarks
 				self.ok, self.state = True, m['state']
 				self.show()
 			elif m['type'] == 'notice':		# every command gets one; a refused command changes no state, so put the controls back
 				self.emit('error', m['msg'])
 				self.show()
+			elif m['type'] == 'meter':		# every 250 ms
+				self.emit('meter', (m['adc'], m['sig'], m['nbr']))
+			elif m['type'] == 'bookmarks':		# at start and after save, pick, rename, delete
+				self.emit('bookmarks', m['list'])
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -127,6 +134,10 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			self.send(f'nb {v}')
 		elif k == 'save':
 			self.send('s')
+		elif k in ('bmpick', 'bmdel'):		# v = bookmark dict from the list
+			self.send(f"{k} {v['hz']} {v['mode']}")
+		elif k == 'bmname':		# v = (bookmark, new name); '' goes back to the band label
+			self.send(f"bmname {v[0]['hz']} {v[0]['mode']} {v[1]}")
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -193,11 +204,26 @@ class Shack(QMainWindow):
 		self.nbdb = QSpinBox(minimum=8, maximum=20, value=12, suffix=' dB', keyboardTracking=False, toolTip='Blanker trigger level; changing it turns the blanker on')
 		self.nbdb.valueChanged.connect(lambda v: self.rig and self.rig.set('nbdb', v))
 		switches.addWidget(self.nbdb)
+		self.nbr = QLabel(toolTip='Blanker pulses per second')
+		switches.addWidget(self.nbr)
 		self.save = QPushButton('Save', toolTip='Store these settings for this frequency and mode, and start here next time (like s in the TUI)')
 		self.save.clicked.connect(lambda: self.rig and self.rig.set('save', 1))
 		switches.addWidget(self.save)
-		self.rsp = (self.vol, self.ifr, self.lna, self.ant, self.ovl, self.bw, *self.sw.values(), self.nbdb, self.save)		# RSPdx-only controls
-		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')
+		self.adc = QProgressBar(minimum=-60, maximum=0, value=-60, format='', toolTip='Broadband level into the RSPdx ADC; red above -6 dBFS: back off the gain')
+		self.bms = QTableWidget(0, 4, toolTip='Double-click: go there.  Right-click: rename or delete.  Save adds the current station.')
+		self.bms.setHorizontalHeaderLabels(['Name', 'MHz', 'Mode', 'Hits'])
+		self.bms.verticalHeader().hide()
+		hh = self.bms.horizontalHeader()
+		hh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+		hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)		# Name takes the spare width
+		self.bms.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+		self.bms.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+		self.bms.cellDoubleClicked.connect(lambda r, c: self.rig and self.rig.set('bmpick', self.bmlist[r]))
+		self.bms.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+		self.bms.customContextMenuRequested.connect(self.bm_menu)
+		self.bmlist = []
+		self.rsp = (self.vol, self.ifr, self.lna, self.ant, self.ovl, self.bw, *self.sw.values(), self.nbdb, self.save, self.adc, self.bms)		# RSPdx-only controls
+		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.tx = QLabel('RX')
 		self.tx.setFont(QFont('monospace', 16, QFont.Weight.Bold))
 		self.clients = QLabel()
@@ -205,7 +231,7 @@ class Shack(QMainWindow):
 
 		g = QGridLayout()
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol),
-				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('Signal', self.smeter), ('PTT', self.tx)]):
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('PTT', self.tx)]):
 			g.addWidget(QLabel(name), row, 0)
 			g.addWidget(w, row, 1)
 		row += 1
@@ -213,7 +239,12 @@ class Shack(QMainWindow):
 		g.setRowStretch(row + 1, 1)		# spare height goes below the rows, not into them
 		box = QWidget()
 		box.setLayout(g)
-		self.setCentralWidget(box)
+		main = QHBoxLayout()
+		main.addWidget(box, 3)
+		main.addWidget(self.bms, 2)
+		top = QWidget()
+		top.setLayout(main)
+		self.setCentralWidget(top)
 
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
@@ -247,6 +278,7 @@ class Shack(QMainWindow):
 			self.statusBar().showMessage(f'PTT port {self.a.ptt}: {e.strerror}', 10000)
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
+		self.smeter.setRange(-54, 60)
 		self.show_radio('IC-705', civ.MODE_LIST, 470, (self.freq, self.mode, self.smeter, self.tx))
 		self.on_rig('ptt_clients', 0)
 
@@ -257,7 +289,8 @@ class Shack(QMainWindow):
 		if not Path(self.a.rx).is_file():
 			return self.oops(f"Can't find rx at {self.a.rx}.\n\nIs it built? (./build.sh)")
 		self.rig = Rx(self.a.rx, self.got.emit)
-		self.show_radio('RSPdx', Rx.MODES, 2000, (self.freq, self.mode, *self.rsp))		# no signal meter or PTT from rx yet
+		self.smeter.setRange(-100, -40)		# the TUI's signal scale, dBFS in the passband
+		self.show_radio('RSPdx', Rx.MODES, 2000, (self.freq, self.mode, self.smeter, *self.rsp))		# no PTT on a receiver
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -286,6 +319,11 @@ class Shack(QMainWindow):
 		self.radio.setCurrentText('none')
 		self.clients.setText('')
 		self.on_rig('ovl', (0, 0))
+		self.on_rig('bookmarks', [])
+		self.adc.setValue(-60)
+		self.smeter.setValue(self.smeter.minimum())
+		self.smeter.setFormat('')
+		self.nbr.setText('')
 		for b in self.sw.values():
 			b.setChecked(False)
 		self.on_rig('ptt', 0)
@@ -349,6 +387,20 @@ class Shack(QMainWindow):
 		elif k == 'smeter':
 			self.smeter.setValue(max(-54, min(60, v)))
 			self.smeter.setFormat(sunits(v))
+		elif k == 'meter':		# RSPdx: ADC dBFS, signal dBFS, blanker pulses/s
+			adc, sig, nbr = v
+			self.adc.setValue(round(max(-60, min(0, adc))))
+			self.adc.setFormat(f'{adc:.1f} dBFS')
+			self.adc.setStyleSheet('QProgressBar::chunk { background: red }' if adc > -6 else '')
+			self.smeter.setValue(round(max(-100, min(-40, sig))))
+			self.smeter.setFormat(f'{sig:.1f} dBFS')
+			self.nbr.setText(f'{nbr:.1f}/s' if self.sw['nb'].isChecked() else '')
+		elif k == 'bookmarks':
+			self.bmlist = v
+			self.bms.setRowCount(len(v))
+			for r, b in enumerate(v):
+				for c, t in enumerate((b['name'], f"{b['hz'] / 1e6:.6f}", b['mode'].upper(), str(b['hits']))):
+					self.bms.setItem(r, c, QTableWidgetItem(t))
 		elif k == 'ptt':
 			self.tx.setText('TX' if v else 'RX')
 			self.tx.setStyleSheet('color: white; background: red' if v else '')
@@ -358,6 +410,26 @@ class Shack(QMainWindow):
 			self.oops(v)
 		elif k == 'error':
 			self.statusBar().showMessage(v, 5000)
+
+	def bm_menu(self, pos):		# right-click on a bookmark: rename or delete
+		r = self.bms.rowAt(pos.y())
+		if r < 0 or not self.rig:
+			return
+		b = self.bmlist[r]
+		menu = QMenu(self)
+		ren = menu.addAction('Rename…')
+		dele = menu.addAction('Delete')
+		act = menu.exec(self.bms.viewport().mapToGlobal(pos))
+		if act == ren:
+			name, ok = QInputDialog.getText(self, 'Rename bookmark', 'Name (empty = band label):', text=b['name'])
+			if ok:
+				self.rig.set('bmname', (b, name.strip()))
+		elif act == dele:
+			if QMessageBox.question(self, 'Delete bookmark', f"Delete {b['name']}  {b['hz'] / 1e6:.6f} {b['mode'].upper()}?") == QMessageBox.StandardButton.Yes:
+				self.rig.set('bmdel', b)
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
 
 	def closeEvent(self, e):
 		self.shut()
