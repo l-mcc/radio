@@ -1,15 +1,18 @@
 #! /home/larry/gvenv/bin/python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, sys, time
+import argparse, json, logging, sys, time
+from pathlib import Path
 
 import serial
-from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QUrl
+from PyQt6.QtCore import pyqtSignal, QProcess, Qt, QTimer
 from PyQt6.QtGui import QFont
-from PyQt6.QtWebSockets import QWebSocket
 from PyQt6.QtWidgets import QApplication, QComboBox, QDoubleSpinBox, QGridLayout, QLabel, QMainWindow, QMessageBox, QProgressBar, QWidget
 
 import civ
+
+HERE = Path(__file__).resolve().parent
+log = logging.getLogger('shack')		# set up in main by utils.setup_logging
 
 def sunits(db):		# S9-relative dB -> S7 / S9+20
 	return f'S{max(0, (db + 54) // 6)}' if db <= 0 else f'S9+{db}'
@@ -21,56 +24,79 @@ def sunits(db):		# S9-relative dB -> S7 / S9+20
 '''-------------------------------------------------------------------
 -------------------------------------------------------------------'''
 
-class Rx:		# rx (RSPdx) over its waterfall websocket; same face as civ.Rig: set(), close(), tx, emit(kind, value)
+class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines on its stdout; same face as civ.Rig
 	MODES = ['LSB', 'USB', 'AM', 'WBFM']
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
 
-	def __init__(self, url, emit):
-		self.emit, self.ok, self.tx = emit, False, 0		# ok once rx has said it's rx
-		self.ws = QWebSocket()
-		self.ws.textMessageReceived.connect(self.text)
-		self.ws.disconnected.connect(self.lost)
-		self.ws.open(QUrl(url))
+	def __init__(self, path, emit):
+		self.emit, self.ok, self.tx = emit, False, 0		# ok once rx has sent its first state
+		self.last = ''		# last stderr line, for the box if rx dies
+		self.p = QProcess()
+		self.p.setWorkingDirectory(str(Path(path).parent))		# index.html, app.js if the waterfall comes back
+		self.p.readyReadStandardOutput.connect(self.out)
+		self.p.readyReadStandardError.connect(self.err)
+		self.p.finished.connect(self.ended)
+		self.p.errorOccurred.connect(lambda e: e == QProcess.ProcessError.FailedToStart and self.emit('gone', f"Couldn't run {path}.\n\n{self.p.errorString()}"))
+		self.p.start(str(path), ['-n'])		# no frequency: rx restores the last s/save
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
 
-	def text(self, msg):
-		m = json.loads(msg)
-		if m['type'] == 'caps':
-			self.ok = m.get('rig') == 'RSPdx'
-			if not self.ok:
-				self.emit('gone', f"Something else is on that port ({m.get('rig')}), not rx.")
-		elif m['type'] == 'state' and self.ok:
-			self.emit('mhz', m['state']['mhz'])
-			self.emit('mode', m['state']['mode'])
-		elif m['type'] == 'notice':
-			self.emit('error', m['msg'])
+	def out(self):
+		while self.p.canReadLine():
+			m = json.loads(bytes(self.p.readLine()).decode())
+			if m['type'] == 'state':
+				self.ok = True
+				self.emit('mhz', m['state']['mhz'])
+				self.emit('mode', m['state']['mode'])
+			elif m['type'] == 'notice':
+				self.emit('error', m['msg'])
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
 
-	def lost(self):
-		self.emit('gone', 'Lost rx.\n\nClosed, or its waterfall turned off?' if self.ok else
-			"Can't reach rx.\n\nStart it with the waterfall on: ./rx -w\n(or w in its TUI)")
+	def err(self):		# rx's stderr goes to shack.log
+		for line in bytes(self.p.readAllStandardError()).decode(errors='replace').splitlines():
+			if line.strip():
+				self.last = line.strip()
+				log.info(f'rx: {self.last}')
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def ended(self, code, status):
+		if self.ok:
+			how = 'crashed' if status == QProcess.ExitStatus.CrashExit else f'stopped (exit {code})'
+			self.emit('gone', f'rx {how}.\n\nLast from rx: {self.last}\n(all of it is in shack.log)')
+		else:
+			self.emit('gone', f"Couldn't start the RSPdx.\n\n{self.last or 'rx exited with ' + str(code)}\n\nIs it plugged in? Is another program using it?")
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
 
 	def set(self, k, v):
 		if k == 'mhz':
-			self.ws.sendTextMessage(f'f {v:.6f}')
+			self.send(f'f {v:.6f}')
 		elif k == 'mode':
-			self.ws.sendTextMessage(f'm {v.lower()}')
+			self.send(f'm {v.lower()}')
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
 
-	def close(self):
-		self.ws.disconnected.disconnect(self.lost)
-		self.ws.close()
+	def send(self, line):
+		self.p.write((line + '\n').encode())
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def close(self):		# EOF on stdin is rx's cue to shut down cleanly
+		self.p.finished.disconnect(self.ended)
+		self.p.closeWriteChannel()
+		if not self.p.waitForFinished(3000):
+			self.p.kill()
+			self.p.waitForFinished(1000)
 # class Rx
 
 
@@ -151,6 +177,8 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def open_rx(self):
+		if not Path(self.a.rx).is_file():
+			return self.oops(f"Can't find rx at {self.a.rx}.\n\nIs it built? (./build.sh)")
 		self.rig = Rx(self.a.rx, self.got.emit)
 		self.show_radio('RSPdx', Rx.MODES, 2000, (self.freq, self.mode))		# no signal meter or PTT from rx yet
 
@@ -286,14 +314,14 @@ if __name__ == '__main__':
 			ap.add_argument('--baud', type=int, default=115200)
 			ap.add_argument('--addr', type=lambda x: int(x, 0), default=0xA4)
 			ap.add_argument('--ptt', type=int, default=4532, help='rigctld-style PTT port for xara, 0 = off')
-			ap.add_argument('--rx', default='ws://localhost:8700/ws', help="rx's waterfall websocket")
+			ap.add_argument('--rx', default=str(HERE / 'rx'), help='the rx program (run as rx -n)')
 			a = ap.parse_args()
 		else:
 			ap = argparse.ArgumentParser()
 			ap.add_argument('--baud', type=int, default=115200)
 			ap.add_argument('--addr', type=lambda x: int(x, 0), default=0xA4)
 			ap.add_argument('--ptt', type=int, default=4532, help='rigctld-style PTT port for xara, 0 = off')
-			ap.add_argument('--rx', default='ws://localhost:8700/ws', help="rx's waterfall websocket")
+			ap.add_argument('--rx', default=str(HERE / 'rx'), help='the rx program (run as rx -n)')
 			a = ap.parse_args()
 		# if vscode
 
