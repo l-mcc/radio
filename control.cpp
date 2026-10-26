@@ -390,8 +390,8 @@ bool Control::command(const std::string& line) {
 	if (op == "q" || op == "quit") return false;
 	if (op == "status") { status(); notice_ = "Settings refreshed"; return true; }
 	if (op == "help" || op == "h" || op == "?") {
-		notice_ = "f MHz | m lsb/usb/am/wbfm | v volume | if dB | lna state | ant a/b/c | hdr 0/1 | notch 0/1 | dab 0/1 | ref dB | zoom 0-2 | bw 0-3 | digi 0/1 | nb 0/1/dB | s [name] | q";
-		if (!ui_active_) fprintf(stderr, "Commands: f <MHz>, m <lsb|usb|am|wbfm>, v <volume>, g <IF-reduction> <LNA>, if <dB>, lna <state>, ant <a|b|c>, hdr <0|1>, notch <0|1>, dab <0|1>, ref <dB>, zoom <0-2>, bw <0-3>, digi <0|1>, nb <0|1|8-20>, s/save [name], status, q\n");
+		notice_ = "f MHz | m lsb/usb/am/wbfm | v volume | if dB | lna state | ant a/b/c | hdr 0/1 | notch 0/1 | dab 0/1 | ref dB | zoom 0-2 | bw 0-3 | wf 0/1 | digi 0/1 | nb 0/1/dB | s [name] | q";
+		if (!ui_active_) fprintf(stderr, "Commands: f <MHz>, m <lsb|usb|am|wbfm>, v <volume>, g <IF-reduction> <LNA>, if <dB>, lna <state>, ant <a|b|c>, hdr <0|1>, notch <0|1>, dab <0|1>, ref <dB>, zoom <0-2>, bw <0-3>, wf <0|1>, digi <0|1>, nb <0|1|8-20>, s/save [name], status, q\n");
 		return true;
 	}
 
@@ -431,6 +431,15 @@ bool Control::command(const std::string& line) {
 			set_ssb_bw(i);
 			notice_ = "Bandwidth updated";
 		} else notice_ = "Usage: bw 0-3";
+		return true;
+	}
+
+	if (op == "wf") {		// waterfall page on port 8700; rx opens the browser if no page connects
+		std::string value;
+		if ((in >> value) && !(in >> extra) && (value == "0" || value == "1" || value == "on" || value == "off")) {
+			wf_on = value == "1" || value == "on";
+			notice_ = wf_on ? "Waterfall on: http://localhost:8700/" : "Waterfall off";
+		} else notice_ = "Usage: wf 0/1";
 		return true;
 	}
 

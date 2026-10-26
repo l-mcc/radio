@@ -45,7 +45,7 @@ def quiet(w, f, *a):		# change a widget from the radio's side without echoing it
 class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines on its stdout; same face as civ.Rig
 	MODES = ['LSB', 'USB', 'AM', 'WBFM']
 	BANDWIDTHS = ['Narrow voice  1.8 kHz', 'Normal voice  2.8 kHz', 'Wide voice  3.1 kHz', 'Digital  2.8 kHz']		# bw 0-3, SSB only
-	SWITCHES = {'notch': 'RF notch', 'dab': 'DAB notch', 'hdr': 'HDR', 'digi': 'Digital out', 'nb': 'Noise blanker'}		# rx command: button
+	SWITCHES = {'notch': 'RF notch', 'dab': 'DAB notch', 'hdr': 'HDR', 'digi': 'Digital out', 'wf': 'Waterfall', 'nb': 'Noise blanker'}		# rx command: button
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -213,6 +213,7 @@ class Shack(QMainWindow):
 		self.bms = QTableWidget(0, 4, toolTip='Double-click: go there.  Right-click: rename or delete.  Save adds the current station.')
 		self.bms.setHorizontalHeaderLabels(['Name', 'MHz', 'Mode', 'Hits'])
 		self.bms.verticalHeader().hide()
+		self.bms.setMinimumWidth(320)		# the button row is wide; don't let it squeeze the table away
 		hh = self.bms.horizontalHeader()
 		hh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
 		hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)		# Name takes the spare width

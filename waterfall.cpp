@@ -255,6 +255,7 @@ void Waterfall::serve() {		// new connections: a file from dir, or the /ws upgra
 		ssize_t n = recv(fd, buf, sizeof buf - 1, 0);
 		std::string req(buf, std::max<ssize_t>(n, 0)), path;
 		std::istringstream(req) >> path >> path;		// "GET /path HTTP/1.1"
+		if (path.empty() || path[0] != '/') { close(fd); continue; }		// hung up or not HTTP: an empty name would open the folder itself and throw
 		size_t k = req.find("Sec-WebSocket-Key:");
 		if (path == "/ws" && k != std::string::npos) {
 			k += 18;
@@ -272,7 +273,7 @@ void Waterfall::serve() {		// new connections: a file from dir, or the /ws upgra
 		}
 		std::string name = path == "/" ? "index.html" : path.substr(std::min<size_t>(1, path.size()));
 		std::ifstream f;
-		if (name.find('/') == std::string::npos && name.find("..") == std::string::npos)		// plain files in dir only
+		if (!name.empty() && name.find('/') == std::string::npos && name.find("..") == std::string::npos)		// plain files in dir only
 			f.open(dir + "/" + name, std::ios::binary);
 		if (!f.is_open()) {
 			std::string msg = name + " not found in " + dir + "\n";
