@@ -13,12 +13,25 @@
 #include <utility>
 #include <initializer_list>
 
-extern int ssb_bw_index;		// these three live in tui.cpp, which every receiver links
-extern bool wf_on;
-extern bool digi_on;
-extern bool nb_on;
-extern int nb_db;
-void set_ssb_bw(int index);
+namespace {
+const int bandwidth_low[] = {300, 300, 200, 200};		// SSB presets: narrow voice, normal voice, wide voice, digital
+const int bandwidth_high[] = {2100, 3100, 3300, 3000};
+constexpr int bandwidth_count = 4;
+}
+
+int ssb_bw_index = 1;		// receiver switches; were in tui.cpp
+int ssb_bw_low = 300;
+int ssb_bw_high = 3100;
+bool wf_on = false;
+bool digi_on = false;
+bool nb_on = false;
+int nb_db = 12;
+
+void set_ssb_bw(int index) {
+	ssb_bw_index = (index % bandwidth_count + bandwidth_count) % bandwidth_count;
+	ssb_bw_low = bandwidth_low[ssb_bw_index];
+	ssb_bw_high = bandwidth_high[ssb_bw_index];
+}
 
 namespace {
 std::string clean_name(std::string s) {		// trims; '' or "" (or quotes around a name) come off

@@ -1,6 +1,5 @@
 #include "rsp.h"
 #include "control.h"
-#include "tui.h"
 #include "audio.h"
 #include "waterfall.h"
 #include "demod.h"
@@ -103,7 +102,7 @@ void signal_handler(int) {
 int main(int argc, char** argv) {
 	auto wall_start = std::chrono::steady_clock::now();
 	bool want_wf = false, headless = false;
-	for (int i = 1; i < argc; )		// -w: start with the waterfall on; -n: no TUI, driven by shack.py (stdin commands, stdout JSON)
+	for (int i = 1; i < argc; )		// -w: start with the waterfall on; -n: driven by shack.py (stdin commands, stdout JSON)
 		if (std::strcmp(argv[i], "-w") == 0 || std::strcmp(argv[i], "-n") == 0) {
 			(argv[i][1] == 'w' ? want_wf : headless) = true;
 			std::copy(argv + i + 1, argv + argc, argv + i);
@@ -146,16 +145,13 @@ int main(int argc, char** argv) {
 
 	auto speaker = std::make_unique<Audio>(static_cast<unsigned int>(demod->audio_rate), demod->name);
 	if (!speaker->open()) return 1;
-	std::unique_ptr<Waterfall> wf;		// created and dropped to follow wf_on (TUI); serves index.html, app.js from the current directory
+	std::unique_ptr<Waterfall> wf;		// created and dropped to follow wf_on (-w); serves index.html, app.js from the current directory
 
 	if (!rsp.start()) return 1;
 
-	TUI tui(control);
-	bool using_tui = !raw && !headless && tui.open();
 	if (headless) control.set_ui_active(true);		// shack.py gets notices on stdout, no per-command chatter on stderr
 	std::string last_state;
 	auto last_out = std::chrono::steady_clock::now();
-	speaker->set_quiet(using_tui);
 	auto last_meter = std::chrono::steady_clock::now();
 	auto last_report = last_meter;
 	IQ iq;
@@ -179,7 +175,7 @@ int main(int argc, char** argv) {
 	};
 
 	while (running) {
-		if (!(using_tui ? tui.poll() : control.poll())) break;
+		if (!control.poll()) break;
 		if (headless && control.stdin_closed()) break;		// shack.py closed the pipe or died
 		auto s = control.state();
 		if (s.mode != mode) {
@@ -191,11 +187,9 @@ int main(int argc, char** argv) {
 				last_if_hz = 1e99;
 				speaker = std::make_unique<Audio>(static_cast<unsigned int>(demod->audio_rate), demod->name);
 				speaker->open();
-				speaker->set_quiet(using_tui);
 				while (queue.pop(iq)) {}		// old rate, old LO
 				if (wf) wf->configure(demod->zooms);
 				if (digi) digi = std::make_unique<DigiOut>(demod->audio_rate);		// new audio rate
-				if (using_tui) tui.clear_channel();
 			}
 			mode = s.mode;
 			s = control.state();
@@ -229,12 +223,7 @@ int main(int argc, char** argv) {
 		if (wf_on != bool(wf)) wf = wf_on ? std::make_unique<Waterfall>(demod->zooms) : nullptr;
 		if (wf) wf->poll(control);		// page commands, retunes
 		if (now - last_meter >= std::chrono::milliseconds(250)) {
-			if (using_tui && meter_count)
-				tui.set_signal_db(10.0 * std::log10(std::max(1e-12, meter_power / meter_count)));
-			if (using_tui && demod->channel_count)
-				tui.set_channel_db(10.0 * std::log10(std::max(1e-15, demod->channel_power / demod->channel_count)));
-			if (using_tui) tui.set_nb_rate(demod->nb_pulses / std::chrono::duration<double>(now - last_meter).count());
-			if (headless && meter_count) {		// same numbers as the TUI's meters: ADC (broadband) and signal (passband) in dBFS, blanker pulses/s
+			if (headless && meter_count) {		// ADC (broadband) and signal (passband) in dBFS, blanker pulses/s
 				printf("{\"type\":\"meter\",\"adc\":%.1f,\"sig\":%.1f,\"nbr\":%.1f}\n", 10.0 * std::log10(std::max(1e-12, meter_power / meter_count)),
 					demod->channel_count ? 10.0 * std::log10(std::max(1e-15, demod->channel_power / demod->channel_count)) : -150.0,
 					demod->nb_pulses / std::chrono::duration<double>(now - last_meter).count());
@@ -247,14 +236,13 @@ int main(int argc, char** argv) {
 		}
 		if (now - last_report >= std::chrono::seconds(5)) {
 			auto qs = queue.stats(true);
-			if (!using_tui && !headless)
+			if (!headless)
 				fprintf(stderr, "Queue: depth=%zu peak=%zu dropped=%llu\n", qs.depth, qs.peak, (unsigned long long)qs.dropped);
 			last_report = now;
 		}
 	}
 
 	double audio_latency = speaker->latency_ms();
-	tui.close();
 	stopping = 1;
 	rsp.stop();
 	while (queue.pop(iq)) process(iq);

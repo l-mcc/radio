@@ -19,7 +19,7 @@ public:
 	double offset = 10000, audio_rate = 10000;		// offset: LO above the dial
 	std::vector<double> zooms;		// waterfall spans; [0] = rate()
 	const char *name = "Radio";		// PulseAudio stream name
-	double channel_power = 0;		// passband power for the TUI meter; the caller reads and resets
+	double channel_power = 0;		// passband power for the signal meter (every mode); the caller reads and resets
 	uint64_t channel_count = 0;
 	bool tap = false;		// fill clean: the audio before volume, for decoders
 	std::vector<float> clean;

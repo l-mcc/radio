@@ -4,7 +4,7 @@
 #include <array>
 #include <cmath>
 
-extern int ssb_bw_low, ssb_bw_high;		// tui.cpp: the TUI's bandwidth presets
+extern int ssb_bw_low, ssb_bw_high;		// control.cpp: the bandwidth preset (bw command)
 
 namespace {
 constexpr float pi = 3.14159265358979323846f;
@@ -184,7 +184,9 @@ public:
 			liquid_float_complex y;
 			firfilt_crcf_execute(filter, &y);
 			audio[i] = std::abs(static_cast<std::complex<float>>(y));
+			channel_power += 0.5 * std::norm(y);		// signal meter, as SSB
 		}
+		channel_count += iq2.size();
 		for (float &sample : audio) {
 			dc += 0.0025f * (sample - dc);		// carrier level, ~20 ms
 			sample = (sample - dc) / std::max(dc, carrier_floor) * am_gain;
@@ -231,6 +233,8 @@ public:
 		auto *added = reinterpret_cast<liquid_float_complex*>(pending.data() + pending.size() - iq.size());
 		nco_crcf_mix_block_up(nco, added, added, iq.size());
 		decimate(lpf, decim, pending, channel);
+		for (auto &x : channel) channel_power += 0.5 * std::norm(x);		// signal meter: the 200 kHz channel before the discriminator
+		channel_count += channel.size();
 		demodulated.resize(channel.size());
 		if (!channel.empty())
 			freqdem_demodulate_block(dem, reinterpret_cast<liquid_float_complex*>(channel.data()), channel.size(), demodulated.data());
