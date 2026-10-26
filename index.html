@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSPdx</title>
+<style>
+	:root { --bg: #15181a; --panel: #1f2427; --lcd: #2b2410; --amber: #ffb52e; --dim: #6b5a2c; --text: #c9ced1; --muted: #8a9296; --err: #ff6b5b; }
+	* { box-sizing: border-box; }
+	body { user-select: none; margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; }
+	header { display: flex; justify-content: space-between; padding: 6px 12px; color: var(--muted); font-size: 13px; }
+	#status.up { color: #7fc47f; } #status.err { color: var(--err); }
+	#lcd { margin: 0 12px; padding: 10px 16px; background: var(--lcd); border-radius: 6px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; box-shadow: inset 0 2px 8px #000a; }
+	#freq { font: 600 clamp(28px, 6vw, 56px) 'DejaVu Sans Mono', monospace; color: var(--amber); user-select: none; letter-spacing: .02em; }
+	#freq .d { cursor: ns-resize; outline: none; border-radius: 3px; }
+	#freq .d:hover, #freq .d:focus-visible { background: #ffb52e22; }
+	#freq .lead, #freq .sep { color: var(--dim); }
+	#freq .unit { font-size: .35em; margin-left: .4em; color: var(--dim); }
+	#side { display: flex; flex-direction: column; gap: 6px; color: var(--amber); }
+	#side .row { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+	.seg { display: inline-flex; }
+	.seg button:first-child { border-radius: 4px 0 0 4px; }
+	.seg button:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
+	#ovl { color: var(--err); font-weight: 600; }
+	button { background: var(--panel); color: var(--amber); border: 1px solid var(--dim); border-radius: 4px; padding: 3px 8px; font: inherit; }
+	button { color: var(--muted); cursor: pointer; }
+	button.on { color: var(--amber); border-color: var(--amber); background: #ffb52e1a; }
+	button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+	#ctl { margin: 8px 12px 0; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; color: var(--muted); font-size: 14px; }
+	#ctl label { display: flex; align-items: center; gap: 6px; }
+	#ctl input[type=range] { width: 120px; accent-color: var(--amber); }
+	#ctl output { width: 2.5em; color: var(--amber); }
+	#wf { position: relative; flex: 1; margin: 10px 12px 12px; min-height: 200px; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+	#wfc { width: 100%; height: 100%; display: block; image-rendering: pixelated; cursor: crosshair; background: #000; border-radius: 4px; }
+	#pass, #cursor, #shade { position: absolute; top: 0; bottom: 18px; pointer-events: none; }
+	#shade { left: 0; right: 0; background: linear-gradient(to right, rgba(0,0,0,.65) 0 var(--pass-left), transparent var(--pass-left) var(--pass-right), rgba(0,0,0,.65) var(--pass-right) 100%); }
+	#pass { border: solid var(--amber); border-width: 0 2px; }
+	#cursor { width: 1px; background: #ff4d4d; }
+	#scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+	#hover { color: var(--amber); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<header><span id="rig">RSPdx</span><span id="status">Connecting</span></header>
+<div id="lcd">
+	<div id="freq"></div>
+	<div id="side">
+		<div class="row">
+			<span class="seg" title="Antenna"><button id="ant_a">A</button><button id="ant_b">B</button><button id="ant_c">C</button></span>
+			<button id="mode" title="Switch sideband"></button>
+			<span class="seg" title="Waterfall span"><button id="zoom_0">500k</button><button id="zoom_1">100k</button><button id="zoom_2">10k</button></span>
+			<span id="ovl" hidden>OVL</span>
+		</div>
+	</div>
+</div>
+<div id="ctl"></div>
+<div id="wf">
+	<canvas id="wfc" width="1024" height="400"></canvas>
+	<div id="shade" hidden></div>
+	<div id="pass" hidden></div>
+	<div id="cursor" hidden></div>
+	<div id="scale"><span id="lo"></span><span id="hover"></span><span id="hi"></span></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
