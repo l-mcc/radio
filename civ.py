@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, asyncio, glob, json, logging, struct, threading, time
+import argparse, asyncio, glob, json, logging, socketserver, struct, threading, time
 from pathlib import Path
 
 import serial
@@ -37,7 +37,11 @@ def band_window(khz):		# (range code, lo, hi) for the ham band around khz, or a 
 		hi = lo + MAXW
 	code, (a, b) = rng
 	return code, max(lo, a), min(hi, b)
-log = logging.getLogger('engine')
+log = logging.getLogger('civ')
+
+def find_dev():		# CI-V is interface 00 of the 705's two USB serial ports
+	ids = glob.glob('/dev/serial/by-id/*IC-705*if00')
+	return ids[0] if ids else '/dev/ttyACM0'
 
 def bcd(b):		# little-endian BCD
 	return int(bytes(reversed(b)).hex())
@@ -54,6 +58,7 @@ class Rig:
 		s.base, s.data = '', 0		# mode byte and data flag arrive separately
 		s.last_set = 0.0		# NG only reported right after a user command; polls may NG quietly
 		s.mhz, s.band, s.win = 0.0, False, None		# band view: fixed scope edges that follow the dial
+		s.tx = 0		# as last reported by 1C 00
 		threading.Thread(target=s.reader, daemon=True).start()
 
 	def send(s, *body):
@@ -64,6 +69,7 @@ class Rig:
 		b = s.base if base is None else base
 		s.send(0x03)
 		s.send(0x04)
+		s.send(0x1C, 0x00)
 		if b in DATA_OK:
 			s.send(0x1A, 0x06)
 		if b and b not in NOWIDTH:
@@ -106,6 +112,9 @@ class Rig:
 			s.emit('width', (i + 1) * 200 if s.base == 'AM' else (i + 1) * 50 if i < 10 else (i - 4) * 100)
 		elif cmd in (0x14, 0x16) and len(d) >= 2 and (cmd, d[0]) in RCTL:
 			s.emit(RCTL[cmd, d[0]], int(d[1:3].hex()) if cmd == 0x14 else d[1])
+		elif cmd == 0x1C and len(d) == 2 and d[0] == 0x00:
+			s.tx = d[1]
+			s.emit('ptt', d[1])
 		elif cmd == 0x11 and len(d) == 1:
 			s.emit('att', int(d[0] != 0))
 		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x02:
@@ -170,9 +179,15 @@ class Rig:
 		else:
 			s.hdr = None		# dropped a frame; wait for the next header
 
+	def ptt(s, on):
+		s.send(0x1C, 0x00, 0x01 if on else 0x00)
+		s.send(0x1C, 0x00)
+
 	def set(s, k, v):
 		s.last_set = time.monotonic()
-		if k == 'mhz':
+		if k == 'ptt':
+			s.ptt(int(v))
+		elif k == 'mhz':
 			s.send(0x05, *tobcd(round(float(v) * 1e6)))
 			s.send(0x03)		# read back so the UI settles immediately
 		elif k == 'mode':
@@ -220,6 +235,39 @@ class Rig:
 			s.send(cmd, sub)
 		else:
 			raise KeyError(k)
+
+class PttServer(socketserver.ThreadingTCPServer):
+	allow_reuse_address = daemon_threads = True
+	clients = 0
+
+def serve_ptt(rig, port=4532, host='127.0.0.1'):		# the bit of rigctld xara uses: T 1, T 0, t
+	class H(socketserver.StreamRequestHandler):
+		def handle(h):
+			keyed = False
+			srv.clients += 1
+			rig.emit('ptt_clients', srv.clients)
+			try:
+				for line in h.rfile:
+					c = line.decode(errors='replace').split()
+					if len(c) == 2 and c[0] == 'T' and c[1] in ('0', '1'):
+						keyed = c[1] == '1'
+						rig.ptt(keyed)
+						r = 'RPRT 0'
+					elif c == ['t']:
+						r = str(rig.tx)
+					elif c in (['q'], ['Q']):
+						break
+					else:
+						r = 'RPRT -4'		# not implemented
+					h.wfile.write((r + '\n').encode())
+			finally:
+				if keyed:
+					rig.ptt(False)		# client gone while keyed: never leave the 705 transmitting
+				srv.clients -= 1
+				rig.emit('ptt_clients', srv.clients)
+	srv = PttServer((host, port), H)
+	threading.Thread(target=srv.serve_forever, daemon=True).start()
+	return srv
 
 #=====================================================================
 
@@ -308,9 +356,8 @@ async def lifecycle(app):
 #=====================================================================
 
 if __name__ == '__main__':
-	ids = glob.glob('/dev/serial/by-id/*IC-705*if00')
 	ap = argparse.ArgumentParser()
-	ap.add_argument('--dev', default=ids[0] if ids else '/dev/ttyACM0')
+	ap.add_argument('--dev', default=find_dev())
 	ap.add_argument('--baud', type=int, default=115200)
 	ap.add_argument('--addr', type=lambda x: int(x, 0), default=0xA4)
 	ap.add_argument('--host', default='0.0.0.0')
