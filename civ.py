@@ -39,9 +39,9 @@ def band_window(khz):		# (range code, lo, hi) for the ham band around khz, or a 
 	return code, max(lo, a), min(hi, b)
 log = logging.getLogger('civ')
 
-def find_dev():		# CI-V is interface 00 of the 705's two USB serial ports
+def find_dev():		# CI-V is interface 00 of the 705's two USB serial ports; None if not plugged in
 	ids = glob.glob('/dev/serial/by-id/*IC-705*if00')
-	return ids[0] if ids else '/dev/ttyACM0'
+	return ids[0] if ids else None
 
 def bcd(b):		# little-endian BCD
 	return int(bytes(reversed(b)).hex())
@@ -59,9 +59,12 @@ class Rig:
 		s.last_set = 0.0		# NG only reported right after a user command; polls may NG quietly
 		s.mhz, s.band, s.win = 0.0, False, None		# band view: fixed scope edges that follow the dial
 		s.tx = 0		# as last reported by 1C 00
+		s.alive, s.heard = True, time.monotonic()		# heard: last frame from the radio
 		threading.Thread(target=s.reader, daemon=True).start()
 
 	def send(s, *body):
+		if not s.alive:
+			return
 		with s.wlock:
 			s.ser.write(bytes([0xFE, 0xFE, s.addr, ME, *body, 0xFD]))
 
@@ -79,15 +82,26 @@ class Rig:
 		for c in [*CTL.values(), (0x11,), (0x27, 0x19, 0x00), *((0x27, sub, 0x00) for sub in SCOPE.values())]:
 			s.send(*c)
 
+	def close(s):
+		s.alive = False
+		s.ser.close()
+
 	def reader(s):
 		buf = bytearray()
-		while True:
-			buf += s.ser.read(s.ser.in_waiting or 1)
+		while s.alive:
+			try:
+				buf += s.ser.read(s.ser.in_waiting or 1)
+			except (serial.SerialException, OSError, TypeError):
+				if s.alive:		# not our close(): unplugged or powered off
+					s.alive = False
+					s.emit('gone', 'Lost the radio.\n\nUnplugged or turned off?')
+				return
 			while (end := buf.find(0xFD)) >= 0:
 				f, buf = bytes(buf[:end]), buf[end + 1:]
 				i = f.rfind(b'\xfe\xfe')
 				if i < 0 or len(f) < i + 5 or f[i + 3] == ME:		# junk or our own echo
 					continue
+				s.heard = time.monotonic()
 				try:
 					s.dispatch(f[i + 4], f[i + 5:])
 				except Exception:
@@ -357,7 +371,7 @@ async def lifecycle(app):
 
 if __name__ == '__main__':
 	ap = argparse.ArgumentParser()
-	ap.add_argument('--dev', default=find_dev())
+	ap.add_argument('--dev', default=find_dev() or '/dev/ttyACM0')
 	ap.add_argument('--baud', type=int, default=115200)
 	ap.add_argument('--addr', type=lambda x: int(x, 0), default=0xA4)
 	ap.add_argument('--host', default='0.0.0.0')
