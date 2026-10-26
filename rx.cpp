@@ -55,13 +55,14 @@ private:
 	std::vector<int16_t> pcm;
 };
 
-std::string state_json(const Control::State &s) {		// rx -n stdout line; same fields as the waterfall page gets, plus nb and digi
+std::string state_json(const Control::State &s) {		// rx -n stdout line; same fields as the waterfall page gets, plus ovln, nb and digi
 	std::string mode = s.mode;
 	for (auto &ch : mode) ch = toupper(ch);
 	char b[400];
 	snprintf(b, sizeof b, "{\"type\":\"state\",\"state\":{\"mhz\":%.6f,\"mode\":\"%s\",\"v\":%.2f,\"if\":%d,\"lna\":%d,\"ant\":\"%c\","
-		"\"notch\":%d,\"dab\":%d,\"hdr\":%d,\"ovl\":%d,\"ref\":%.1f,\"zoom\":%d,\"nb\":%d,\"digi\":%d}}", s.mhz, mode.c_str(), s.volume,
-		s.if_reduction, s.lna, s.antenna, s.rf_notch, s.dab_notch, s.hdr, s.overload, s.ref, s.zoom, nb_on ? nb_db : 0, int(digi_on));
+		"\"notch\":%d,\"dab\":%d,\"hdr\":%d,\"ovl\":%d,\"ovln\":%llu,\"ref\":%.1f,\"zoom\":%d,\"nb\":%d,\"digi\":%d}}", s.mhz, mode.c_str(),
+		s.volume, s.if_reduction, s.lna, s.antenna, s.rf_notch, s.dab_notch, s.hdr, s.overload, static_cast<unsigned long long>(s.overload_count),
+		s.ref, s.zoom, nb_on ? nb_db : 0, int(digi_on));		// ovln: overloads since start, so short ones aren't missed
 	return b;
 }
 

@@ -69,6 +69,7 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 				self.emit('mhz', m['state']['mhz'])
 				for k in ('mode', 'v', 'if', 'lna', 'ant'):
 					self.emit(k, m['state'][k])
+				self.emit('ovl', (m['state']['ovl'], m['state']['ovln']))
 			elif m['type'] == 'notice':
 				self.emit('error', m['msg'])
 
@@ -157,7 +158,8 @@ class Shack(QMainWindow):
 		self.ant = QComboBox()
 		self.ant.addItems(['A', 'B', 'C'])
 		self.ant.activated.connect(lambda i: self.rig and self.rig.set('ant', self.ant.itemText(i)))
-		self.rsp = (self.vol, self.ifr, self.lna, self.ant)		# RSPdx-only rows
+		self.ovl = QLabel()		# RF overload: blank until the first one
+		self.rsp = (self.vol, self.ifr, self.lna, self.ant, self.ovl)		# RSPdx-only rows
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')
 		self.tx = QLabel('RX')
 		self.tx.setFont(QFont('monospace', 16, QFont.Weight.Bold))
@@ -166,9 +168,10 @@ class Shack(QMainWindow):
 
 		g = QGridLayout()
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol),
-				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Signal', self.smeter), ('PTT', self.tx)]):
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Overload', self.ovl), ('Signal', self.smeter), ('PTT', self.tx)]):
 			g.addWidget(QLabel(name), row, 0)
 			g.addWidget(w, row, 1)
+		g.setRowStretch(row + 1, 1)		# spare height goes below the rows, not into them
 		box = QWidget()
 		box.setLayout(g)
 		self.setCentralWidget(box)
@@ -243,6 +246,7 @@ class Shack(QMainWindow):
 			self.srv = None
 		self.radio.setCurrentText('none')
 		self.clients.setText('')
+		self.on_rig('ovl', (0, 0))
 		self.on_rig('ptt', 0)
 		for w in (self.freq, self.mode, self.smeter, self.tx, *self.rsp):
 			w.setEnabled(False)
@@ -287,6 +291,10 @@ class Shack(QMainWindow):
 			quiet(w, w.setValue, v)
 		elif k == 'ant':
 			self.ant.setCurrentText(v.upper())
+		elif k == 'ovl':		# (now, count since rx started); red while overloaded
+			now, n = v
+			self.ovl.setText(f"{'OVERLOAD' if now else 'clear'} ({n})" if now or n else '')
+			self.ovl.setStyleSheet('color: white; background: red; font-weight: bold' if now else '')
 		elif k == 'smeter':
 			self.smeter.setValue(max(-54, min(60, v)))
 			self.smeter.setFormat(sunits(v))
