@@ -25,7 +25,7 @@ HELP = '''
 <h3>RSPdx</h3>
 <table cellspacing="4">
 <tr><td><b>Mode</b></td><td>LSB, USB, AM, WBFM</td></tr>
-<tr><td><b>Volume</b></td><td>0 to 2</td></tr>
+<tr><td><b>Volume</b></td><td>0 to 1</td></tr>
 <tr><td><b>IF reduction</b></td><td>20-59 dB; more = less gain</td></tr>
 <tr><td><b>LNA reduction</b></td><td>0 = most gain; the top end depends on the band</td></tr>
 <tr><td><b>Antenna</b></td><td>A, B or C</td></tr>
@@ -238,7 +238,7 @@ class Shack(QMainWindow):
 		self.freq.editingFinished.connect(lambda: self.freq.lineEdit().setModified(False))
 		self.mode = QComboBox()
 		self.mode.activated.connect(lambda i: self.rig and self.rig.set('mode', self.mode.itemText(i)))
-		self.vol = QDoubleSpinBox(decimals=3, minimum=0, maximum=2, singleStep=0.005, keyboardTracking=False)
+		self.vol = QDoubleSpinBox(decimals=2, minimum=0, maximum=1, singleStep=0.02, keyboardTracking=False)
 		self.vol.valueChanged.connect(lambda v: self.rig and self.rig.set('v', v))
 		self.ifr = QSpinBox(minimum=20, maximum=59, suffix=' dB', keyboardTracking=False)		# IF gain reduction
 		self.ifr.valueChanged.connect(lambda v: self.rig and self.rig.set('if', v))
