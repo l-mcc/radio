@@ -112,19 +112,24 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 
 	def out(self):
 		while self.p.canReadLine():
-			m = json.loads(bytes(self.p.readLine()).decode())
-			if m['type'] == 'state':
-				if not self.ok:
-					self.send('bm')		# first state: rspdx is up, ask for the bookmarks
-				self.ok, self.state = True, m['state']
-				self.show()
-			elif m['type'] == 'notice':		# every command gets one; a refused command changes no state, so put the controls back
-				self.emit('error', m['msg'])
-				self.show()
-			elif m['type'] == 'meter':		# every 250 ms
-				self.emit('meter', (m['adc'], m['sig'], m['nbr']))
-			elif m['type'] == 'bookmarks':		# at start and after save, pick, rename, delete
-				self.emit('bookmarks', m['list'])
+			line = bytes(self.p.readLine()).decode(errors='replace')
+			try:
+				m = json.loads(line)
+				if m['type'] == 'state':
+					if not self.ok:
+						self.send('bm')		# first state: rspdx is up, ask for the bookmarks
+					self.ok, self.state = True, m['state']
+					self.show()
+				elif m['type'] == 'notice':		# every command gets one; a refused command changes no state, so put the controls back
+					self.emit('error', m['msg'])
+					self.show()
+				elif m['type'] == 'meter':		# every 250 ms
+					self.emit('meter', (m['adc'], m['sig'], m['nbr']))
+				elif m['type'] == 'bookmarks':		# at start and after save, pick, rename, delete
+					self.emit('bookmarks', m['list'])
+			except (ValueError, KeyError, TypeError) as e:		# not JSON, or an rspdx older than this file (pull without ./build.sh): log it, keep going
+				log.error(f'rspdx: bad line ({e!r}): {line.strip()}')
+				self.emit('error', 'rspdx sent something unexpected (rebuild it after the last pull?), see shack.log')
 		# while data coming in from rspdx.cpp
 	# out
 
@@ -390,8 +395,7 @@ class Shack(QMainWindow):
 			self.rig.close()
 			self.rig = None
 		if self.srv:
-			self.srv.shutdown()
-			self.srv.server_close()
+			self.srv.stop()		# also hangs up on connected clients (xara), so none keeps talking to a closed radio
 			self.srv = None
 		self.radio.setCurrentText('none')
 		self.clients.setText('')
@@ -627,6 +631,7 @@ if __name__ == '__main__':
 		app = QApplication(sys.argv)
 		app.setStyleSheet(styles.style)
 		w = Shack(a)
+		sys.excepthook = lambda t, v, tb: (logg.error('uncaught exception', exc_info=(t, v, tb)), w.statusBar().showMessage(f'Error: {v!r}  (details in shack.log)', 10000))		# PyQt6 aborts on an exception in a slot unless excepthook is ours
 		w.show()
 		sys.exit(app.exec())
 

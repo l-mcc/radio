@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, asyncio, glob, json, logging, socketserver, struct, threading, time
+import argparse, asyncio, glob, json, logging, socket, socketserver, struct, threading, time
 from pathlib import Path
 
 import serial
@@ -253,15 +253,29 @@ class Rig:
 class PttServer(socketserver.ThreadingTCPServer):
 	allow_reuse_address = daemon_threads = True
 	clients = 0
+	closed = False
+
+	def stop(s):		# listener and every connected client: a client must never outlive the rig it keys
+		s.closed = True
+		s.shutdown()
+		for c in list(s.conns):
+			try:
+				c.shutdown(socket.SHUT_RDWR)		# the client sees the connection close
+			except OSError:
+				pass
+		s.server_close()
 
 def serve_ptt(rig, port=4532, host='127.0.0.1'):		# the bit of rigctld xara uses: T 1, T 0, t
 	class H(socketserver.StreamRequestHandler):
 		def handle(h):
 			keyed = False
+			srv.conns.add(h.connection)
 			srv.clients += 1
 			rig.emit('ptt_clients', srv.clients)
 			try:
 				for line in h.rfile:
+					if not rig.alive or srv.closed:		# radio gone: hang up rather than answer RPRT 0 for a PTT that does nothing
+						break
 					c = line.decode(errors='replace').split()
 					if len(c) == 2 and c[0] == 'T' and c[1] in ('0', '1'):
 						keyed = c[1] == '1'
@@ -277,9 +291,12 @@ def serve_ptt(rig, port=4532, host='127.0.0.1'):		# the bit of rigctld xara uses
 			finally:
 				if keyed:
 					rig.ptt(False)		# client gone while keyed: never leave the 705 transmitting
+				srv.conns.discard(h.connection)
 				srv.clients -= 1
-				rig.emit('ptt_clients', srv.clients)
+				if not srv.closed:		# after stop() the window may already belong to another radio
+					rig.emit('ptt_clients', srv.clients)
 	srv = PttServer((host, port), H)
+	srv.conns = set()
 	threading.Thread(target=srv.serve_forever, daemon=True).start()
 	return srv
 
