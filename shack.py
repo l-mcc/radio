@@ -10,7 +10,7 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
 	QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QWidget)
 
-import civ
+import civ, styles
 
 HERE = Path(__file__).resolve().parent
 log = logging.getLogger('shack')		# set up in main by utils.setup_logging
@@ -212,13 +212,13 @@ class Shack(QMainWindow):
 		switches = QHBoxLayout()
 		for k, name in Rspdx.SWITCHES.items():
 			b = self.sw[k] = QPushButton(name, checkable=True)
-			b.setStyleSheet('QPushButton:checked { background: #2a7d2a; color: white; font-weight: bold }')		# on = green
 			b.clicked.connect(lambda on, k=k: self.rig and self.rig.set(k, on))		# clicked, not toggled: the radio's own updates don't echo back
 			switches.addWidget(b)
 		self.nbdb = QSpinBox(minimum=8, maximum=20, value=12, suffix=' dB', keyboardTracking=False, toolTip='Blanker trigger level; changing it turns the blanker on')
 		self.nbdb.valueChanged.connect(lambda v: self.rig and self.rig.set('nbdb', v))
 		switches.addWidget(self.nbdb)
 		self.nbr = QLabel(toolTip='Blanker pulses per second')
+		self.nbr.setFixedWidth(self.nbr.fontMetrics().horizontalAdvance('9999.9/s'))		# changing text mustn't resize the panel
 		switches.addWidget(self.nbr)
 		self.save = QPushButton('Save', toolTip='Store these settings for this frequency and mode, and start here next time (like s in the TUI)')
 		self.save.clicked.connect(lambda: self.rig and self.rig.set('save', 1))
@@ -245,12 +245,13 @@ class Shack(QMainWindow):
 		self.statusBar().addPermanentWidget(self.clients)
 
 		g = QGridLayout()
+		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol),
 				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('PTT', self.tx)]):
 			g.addWidget(QLabel(name), row, 0)
-			g.addWidget(w, row, 1)
+			g.addWidget(w, row, 1, 1, 2 if w in (self.ovl, self.adc, self.smeter, self.tx) else 1)
 		row += 1
-		g.addLayout(switches, row, 0, 1, 2)
+		g.addLayout(switches, row, 0, 1, 3)
 		g.setRowStretch(row + 1, 1)		# spare height goes below the rows, not into them
 		box = QWidget()
 		box.setLayout(g)
@@ -550,6 +551,7 @@ if __name__ == '__main__':
 		# ---------------------------------------------------------------------------------------------------
 
 		app = QApplication(sys.argv)
+		app.setStyleSheet(styles.style)
 		w = Shack(a)
 		w.show()
 		sys.exit(app.exec())
