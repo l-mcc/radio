@@ -22,37 +22,42 @@
 
 namespace {
 class DigiOut {		// decoder feed: 48 kHz s16le mono over UDP to 127.0.0.1:7355, gqrx's format (direwolf reads udp:7355)
-public:
-	explicit DigiOut(double rate) : ratio(48000.0 / rate), rs(msresamp_rrrf_create(ratio, 60.0f)) {
-		fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-		to.sin_family = AF_INET;
-		to.sin_port = htons(7355);
-		to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	}
-	~DigiOut() {
-		msresamp_rrrf_destroy(rs);
-		if (fd >= 0) close(fd);
-	}
-	void write(std::vector<float> &x) {
-		if (x.empty() || fd < 0) return;
-		out.resize(static_cast<size_t>(x.size() * ratio) + 64);
-		unsigned int n = 0;
-		msresamp_rrrf_execute(rs, x.data(), x.size(), out.data(), &n);
-		for (unsigned int i = 0; i < n; ++i) pcm.push_back(static_cast<int16_t>(std::lround(std::clamp(out[i], -1.0f, 1.0f) * 32767)));
-		size_t sent = 0;
-		for (; pcm.size() - sent >= packet; sent += packet)		// nobody listening is fine: the datagrams just drop
-			sendto(fd, pcm.data() + sent, packet * 2, MSG_DONTWAIT, reinterpret_cast<sockaddr *>(&to), sizeof to);
-		pcm.erase(pcm.begin(), pcm.begin() + sent);
-	}
-private:
-	static constexpr size_t packet = 480;		// 10 ms per datagram
-	double ratio;
-	msresamp_rrrf rs;
-	int fd = -1;
-	sockaddr_in to{};
-	std::vector<float> out;
-	std::vector<int16_t> pcm;
-};
+	public:
+		explicit DigiOut(double rate) : ratio(48000.0 / rate), rs(msresamp_rrrf_create(ratio, 60.0f)) {
+			fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+			to.sin_family = AF_INET;
+			to.sin_port = htons(7355);
+			to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		}
+		~DigiOut() {
+			msresamp_rrrf_destroy(rs);
+			if (fd >= 0) close(fd);
+		}
+		void write(std::vector<float> &x) {
+			if (x.empty() || fd < 0) return;
+			out.resize(static_cast<size_t>(x.size() * ratio) + 64);
+			unsigned int n = 0;
+			msresamp_rrrf_execute(rs, x.data(), x.size(), out.data(), &n);
+			for (unsigned int i = 0; i < n; ++i) pcm.push_back(static_cast<int16_t>(std::lround(std::clamp(out[i], -1.0f, 1.0f) * 32767)));
+			size_t sent = 0;
+			for (; pcm.size() - sent >= packet; sent += packet)		// nobody listening is fine: the datagrams just drop
+				sendto(fd, pcm.data() + sent, packet * 2, MSG_DONTWAIT, reinterpret_cast<sockaddr *>(&to), sizeof to);
+			pcm.erase(pcm.begin(), pcm.begin() + sent);
+		}
+
+	private:
+		static constexpr size_t packet = 480;		// 10 ms per datagram
+		double ratio;
+		msresamp_rrrf rs;
+		int fd = -1;
+		sockaddr_in to{};
+		std::vector<float> out;
+		std::vector<int16_t> pcm;
+};		// class DigiOut
+
+// ---------------------------------------------------------
+//
+// ---------------------------------------------------------
 
 std::string state_json(const Control::State &s) {		// rx -n stdout line; same fields as the waterfall page gets, plus ovln, nb, digi, bw and wf
 	std::string mode = s.mode;
@@ -65,6 +70,10 @@ std::string state_json(const Control::State &s) {		// rx -n stdout line; same fi
 	return b;
 }
 
+// ---------------------------------------------------------
+//
+// ---------------------------------------------------------
+
 std::string json_text(const std::string &t) {		// a quoted JSON string; bookmark names are user text
 	std::string o = "\"";
 	for (unsigned char c : t)
@@ -73,6 +82,10 @@ std::string json_text(const std::string &t) {		// a quoted JSON string; bookmark
 		else o += c;
 	return o + '"';
 }
+
+// ---------------------------------------------------------
+//
+// ---------------------------------------------------------
 
 std::string bookmarks_json(Control &c) {		// rx -n: the whole list, most picked first; an empty name gets its band label
 	std::string o = "{\"type\":\"bookmarks\",\"list\":[";
@@ -83,6 +96,10 @@ std::string bookmarks_json(Control &c) {		// rx -n: the whole list, most picked 
 	}
 	return o + "]}";
 }
+
+// ---------------------------------------------------------
+//
+// ---------------------------------------------------------
 
 double thread_cpu_seconds() {
 	timespec ts;
@@ -98,6 +115,10 @@ void signal_handler(int) {
 	if (stopping) _exit(130);
 	running = 0;
 }
+
+// ---------------------------------------------------------
+//
+// ---------------------------------------------------------
 
 int main(int argc, char** argv) {
 	auto wall_start = std::chrono::steady_clock::now();
@@ -211,6 +232,12 @@ int main(int argc, char** argv) {
 		demod->tap = bool(digi);
 		demod->nb = nb_on;
 		demod->nb_db = nb_db;
+
+		// ----------------------------------------
+		// sends rspdx data to stdout every 50 ms
+		// data consummed by python Rx() class
+		// ----------------------------------------
+
 		if (headless && now - last_out >= std::chrono::milliseconds(50)) {
 			auto st = state_json(control.state()), note = control.take_notice();
 			if (st != last_state) printf("%s\n", (last_state = st).c_str());
@@ -239,7 +266,9 @@ int main(int argc, char** argv) {
 				fprintf(stderr, "Queue: depth=%zu peak=%zu dropped=%llu\n", qs.depth, qs.peak, (unsigned long long)qs.dropped);
 			last_report = now;
 		}
-	}
+	}		// while(running)
+
+
 
 	double audio_latency = speaker->latency_ms();
 	stopping = 1;

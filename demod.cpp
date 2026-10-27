@@ -4,6 +4,11 @@
 #include <array>
 #include <cmath>
 
+/* ==================================================================================
+	demodulaors implemented here
+================================================================================== */
+
+
 extern int ssb_bw_low, ssb_bw_high;		// control.cpp: the bandwidth preset (bw command)
 
 namespace {

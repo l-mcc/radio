@@ -568,6 +568,11 @@ bool Control::command(const std::string& line) {
 	return true;
 }
 
+/* ---------------------------------------------------------
+	called by rspdx while (running) loop
+	listens for data from the rspdx every 50 ms.
+ --------------------------------------------------------- */
+
 bool Control::poll() {
 	if (stdin_closed_) return true;
 	const auto now = std::chrono::steady_clock::now();

@@ -39,15 +39,13 @@ def quiet(w, f, *a):		# change a widget from the radio's side without echoing it
 
 ==================================================================================================================================================='''
 
-'''-------------------------------------------------------------------
--------------------------------------------------------------------'''
-
 class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines on its stdout; same face as civ.Rig
 	MODES = ['LSB', 'USB', 'AM', 'WBFM']
 	BANDWIDTHS = ['Narrow voice  1.8 kHz', 'Normal voice  2.8 kHz', 'Wide voice  3.1 kHz', 'Digital  2.8 kHz']		# bw 0-3, SSB only
 	SWITCHES = {'notch': 'RF notch', 'dab': 'DAB notch', 'hdr': 'HDR', 'digi': 'Digital out', 'wf': 'Waterfall', 'nb': 'Noise blanker'}		# rx command: button
 
 	'''-------------------------------------------------------------------
+		opens the rspdx with compiled-in c++ demodulators.
 	-------------------------------------------------------------------'''
 
 	def __init__(self, path, emit):
@@ -61,8 +59,12 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 		self.p.finished.connect(self.ended)
 		self.p.errorOccurred.connect(lambda e: e == QProcess.ProcessError.FailedToStart and self.emit('gone', f"Couldn't run {path}.\n\n{self.p.errorString()}"))
 		self.p.start(str(path), ['-n'])		# no frequency: rx restores the last s/save
+		return
+	# __init__
 
 	'''-------------------------------------------------------------------
+		data comming in every 50 ms from rspdx.cpp
+		emits signals with new rspdx valuse to class Shack()
 	-------------------------------------------------------------------'''
 
 	def out(self):
@@ -80,8 +82,12 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 				self.emit('meter', (m['adc'], m['sig'], m['nbr']))
 			elif m['type'] == 'bookmarks':		# at start and after save, pick, rename, delete
 				self.emit('bookmarks', m['list'])
+		# while data coming in from rspdx.cpp
+	# out
 
 	'''-------------------------------------------------------------------
+		emits signals to Shack
+		mhz and other real time values, including overload
 	-------------------------------------------------------------------'''
 
 	def show(self):		# rx's last state -> the window
@@ -92,6 +98,7 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 		for k in ('mode', 'v', 'if', 'lna', 'ant', 'bw', *self.SWITCHES):
 			self.emit(k, st[k])
 		self.emit('ovl', (st['ovl'], st['ovln']))
+	# show
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -101,6 +108,7 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			if line.strip():
 				self.last = line.strip()
 				log.info(f'rx: {self.last}')
+	# err
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -111,6 +119,7 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			self.emit('gone', f'rx {how}.\n\nLast from rx: {self.last}\n(all of it is in shack.log)')
 		else:
 			self.emit('gone', f"Couldn't start the RSPdx.\n\n{self.last or 'rx exited with ' + str(code)}\n\nIs it plugged in? Is another program using it?")
+	# ended
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -138,12 +147,15 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			self.send(f"{k} {v['hz']} {v['mode']}")
 		elif k == 'bmname':		# v = (bookmark, new name); '' goes back to the band label
 			self.send(f"bmname {v[0]['hz']} {v[0]['mode']} {v[1]}")
+	# send
 
 	'''-------------------------------------------------------------------
+		writes to stdout, rspdx is calling controll.poll() every 50 ms
 	-------------------------------------------------------------------'''
 
 	def send(self, line):
 		self.p.write((line + '\n').encode())
+	# send
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -154,6 +166,8 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 		if not self.p.waitForFinished(3000):
 			self.p.kill()
 			self.p.waitForFinished(1000)
+	# show
+
 # class Rx
 
 
@@ -161,7 +175,7 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 -------------------------------------------------------------------'''
 
 class Shack(QMainWindow):
-	got = pyqtSignal(str, object)		# rig reader thread -> GUI thread
+	got = pyqtSignal(str, object)		# rig reader thread -> GUI thread, receives signals from rspdx (Rx) to self.on_rig
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -173,7 +187,7 @@ class Shack(QMainWindow):
 		self.got.connect(self.on_rig, Qt.ConnectionType.QueuedConnection)		# always via the event loop, never inside a rig callback
 
 		self.radio = QComboBox()
-		self.radio.addItems(['none', 'IC-705', 'RSPdx'])		# Xiegu joins once it's been plugged in
+		self.radio.addItems(['none', 'IC-705', 'RSPdx', 'Xiegu x6200'])		# Xiegu to be done soon (placeholder now)
 		self.radio.activated.connect(lambda i: self.pick(self.radio.itemText(i)))
 		self.freq = QDoubleSpinBox(decimals=6, minimum=0.03, maximum=470, singleStep=0.001, suffix=' MHz', keyboardTracking=False)
 		self.freq.setFont(QFont('monospace', 20))
@@ -253,6 +267,7 @@ class Shack(QMainWindow):
 		self.shut()
 
 	'''-------------------------------------------------------------------
+		pick the radio
 	-------------------------------------------------------------------'''
 
 	def pick(self, name):
@@ -261,6 +276,8 @@ class Shack(QMainWindow):
 			self.open_705()
 		elif name == 'RSPdx':
 			self.open_rx()
+		return
+	# pick
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -284,6 +301,7 @@ class Shack(QMainWindow):
 		self.on_rig('ptt_clients', 0)
 
 	'''-------------------------------------------------------------------
+		start the rspdx ussing the sdrplay api and i/q stream
 	-------------------------------------------------------------------'''
 
 	def open_rx(self):
@@ -292,6 +310,8 @@ class Shack(QMainWindow):
 		self.rig = Rx(self.a.rx, self.got.emit)
 		self.smeter.setRange(-100, -40)		# the TUI's signal scale, dBFS in the passband
 		self.show_radio('RSPdx', Rx.MODES, 2000, (self.freq, self.mode, self.smeter, *self.rsp))		# no PTT on a receiver
+		return
+	# open_rx
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -305,9 +325,10 @@ class Shack(QMainWindow):
 			w.setEnabled(True)
 
 	'''-------------------------------------------------------------------
+		close the radio, unkeyed, and grey out its controls
 	-------------------------------------------------------------------'''
 
-	def shut(self):		# close the radio, unkeyed, and grey out its controls
+	def shut(self):
 		if self.rig:
 			if self.rig.tx:
 				self.rig.ptt(False)
@@ -330,6 +351,8 @@ class Shack(QMainWindow):
 		self.on_rig('ptt', 0)
 		for w in (self.freq, self.mode, self.smeter, self.tx, *self.rsp):
 			w.setEnabled(False)
+		return
+	# shut
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -353,6 +376,7 @@ class Shack(QMainWindow):
 			self.n += 1
 
 	'''-------------------------------------------------------------------
+		slot that receives signals from rspdx (Rx)
 	-------------------------------------------------------------------'''
 
 	def on_rig(self, k, v):
@@ -411,8 +435,14 @@ class Shack(QMainWindow):
 			self.oops(v)
 		elif k == 'error':
 			self.statusBar().showMessage(v, 5000)
+		return
+	# on_rig
 
-	def bm_menu(self, pos):		# right-click on a bookmark: rename or delete
+	'''-------------------------------------------------------------------
+		right-click on a bookmark: rename or delete
+	-------------------------------------------------------------------'''
+
+	def bm_menu(self, pos):
 		r = self.bms.rowAt(pos.y())
 		if r < 0 or not self.rig:
 			return
@@ -428,6 +458,8 @@ class Shack(QMainWindow):
 		elif act == dele:
 			if QMessageBox.question(self, 'Delete bookmark', f"Delete {b['name']}  {b['hz'] / 1e6:.6f} {b['mode'].upper()}?") == QMessageBox.StandardButton.Yes:
 				self.rig.set('bmdel', b)
+		return
+	# bm_menu
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -435,6 +467,8 @@ class Shack(QMainWindow):
 	def closeEvent(self, e):
 		self.shut()
 		e.accept()
+		return
+	# closeEvent
 # class Shack
 
 
