@@ -23,7 +23,7 @@ public:
 	uint64_t channel_count = 0;
 	bool tap = false;		// fill clean: the audio before volume, for decoders
 	std::vector<float> clean;
-	bool nb = false;		// noise blanker on the 100 kS/s IQ (SSB, AM); rx follows nb_on, nb_db
+	bool nb = false;		// noise blanker on the 100 kS/s IQ (SSB, AM); rspdx follows nb_on, nb_db
 	float nb_db = 12;		// trigger: this far over the running power
 	uint64_t nb_pulses = 0;		// pulses blanked; the caller reads and resets
 protected:

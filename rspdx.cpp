@@ -59,7 +59,7 @@ class DigiOut {		// decoder feed: 48 kHz s16le mono over UDP to 127.0.0.1:7355, 
 //
 // ---------------------------------------------------------
 
-std::string state_json(const Control::State &s) {		// rx -n stdout line; same fields as the waterfall page gets, plus ovln, nb, digi, bw and wf
+std::string state_json(const Control::State &s) {		// rspdx -n stdout line; same fields as the waterfall page gets, plus ovln, nb, digi, bw and wf
 	std::string mode = s.mode;
 	for (auto &ch : mode) ch = toupper(ch);
 	char b[400];
@@ -87,7 +87,7 @@ std::string json_text(const std::string &t) {		// a quoted JSON string; bookmark
 //
 // ---------------------------------------------------------
 
-std::string bookmarks_json(Control &c) {		// rx -n: the whole list, most picked first; an empty name gets its band label
+std::string bookmarks_json(Control &c) {		// rspdx -n: the whole list, most picked first; an empty name gets its band label
 	std::string o = "{\"type\":\"bookmarks\",\"list\":[";
 	for (auto &b : c.bookmarks()) {
 		char f[96];
@@ -134,13 +134,13 @@ int main(int argc, char** argv) {
 	std::string mode = argc > 2 && !raw ? argv[2] : "";		// empty: Control picks (last save, saved at mhz, band plan)
 	float vol = 0.10f;
 	if (argc > 3 || (headless && raw) || (!mode.empty() && !make_demod(mode, vol))) {
-		fprintf(stderr, "Usage: rx [-w] [-n] [frequency_MHz] [lsb|usb|am|wbfm|raw]   (-n and raw both want stdout)\n");
+		fprintf(stderr, "Usage: rspdx [-w] [-n] [frequency_MHz] [lsb|usb|am|wbfm|raw]   (-n and raw both want stdout)\n");
 		return 1;
 	}
 
 	std::signal(SIGINT, signal_handler);
-	std::signal(SIGTERM, signal_handler);		// shack.py stopping rx: same clean shutdown as Ctrl-C
-	if (headless) std::signal(SIGPIPE, SIG_IGN);		// shack.py gone: writes fail, stdin hits EOF, rx quits
+	std::signal(SIGTERM, signal_handler);		// shack.py stopping rspdx: same clean shutdown as Ctrl-C
+	if (headless) std::signal(SIGPIPE, SIG_IGN);		// shack.py gone: writes fail, stdin hits EOF, rspdx quits
 
 	RSP rsp(mhz * 1e6 + 10000);
 	if (!rsp.open()) return 1;
@@ -234,8 +234,8 @@ int main(int argc, char** argv) {
 		demod->nb_db = nb_db;
 
 		// ----------------------------------------
-		// sends rspdx data to stdout every 50 ms
-		// data consummed by python Rx() class
+		// state, notice and bookmark lines to stdout every 50 ms (meter lines every 250 ms, below)
+		// read by class Rspdx in shack.py
 		// ----------------------------------------
 
 		if (headless && now - last_out >= std::chrono::milliseconds(50)) {

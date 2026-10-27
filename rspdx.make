@@ -5,8 +5,8 @@ LDFLAGS = -L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,--disable-new-dtags
 LDLIBS = -lsdrplay_api -lliquid -lpulse-simple -lpulse -lsqlite3
 OBJS = rsp.o control.o audio.o waterfall.o demod.o
 
-rx: rx.cpp demod.h $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ rx.cpp $(OBJS) $(LDFLAGS) $(LDLIBS)
+rspdx: rspdx.cpp demod.h $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ rspdx.cpp $(OBJS) $(LDFLAGS) $(LDLIBS)
 
 rsp.o: rsp.cpp rsp.h
 	$(CXX) $(CXXFLAGS) -c rsp.cpp -o rsp.o
@@ -25,4 +25,4 @@ demod.o: demod.cpp demod.h
 
 .PHONY: clean
 clean:
-	rm -f rx $(OBJS)
+	rm -f rspdx $(OBJS)

@@ -39,32 +39,32 @@ def quiet(w, f, *a):		# change a widget from the radio's side without echoing it
 
 ==================================================================================================================================================='''
 
-class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines on its stdout; same face as civ.Rig
+class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON lines on its stdout; same face as civ.Rig
 	MODES = ['LSB', 'USB', 'AM', 'WBFM']
 	BANDWIDTHS = ['Narrow voice  1.8 kHz', 'Normal voice  2.8 kHz', 'Wide voice  3.1 kHz', 'Digital  2.8 kHz']		# bw 0-3, SSB only
-	SWITCHES = {'notch': 'RF notch', 'dab': 'DAB notch', 'hdr': 'HDR', 'digi': 'Digital out', 'wf': 'Waterfall', 'nb': 'Noise blanker'}		# rx command: button
+	SWITCHES = {'notch': 'RF notch', 'dab': 'DAB notch', 'hdr': 'HDR', 'digi': 'Digital out', 'wf': 'Waterfall', 'nb': 'Noise blanker'}		# rspdx command: button
 
 	'''-------------------------------------------------------------------
-		opens the rspdx with compiled-in c++ demodulators.
+		starts the rspdx program (C++ demodulators) as a child process
 	-------------------------------------------------------------------'''
 
 	def __init__(self, path, emit):
-		self.emit, self.ok, self.tx = emit, False, 0		# ok once rx has sent its first state
-		self.state = {}		# rx's last state line
-		self.last = ''		# last stderr line, for the box if rx dies
+		self.emit, self.ok, self.tx = emit, False, 0		# ok once rspdx has sent its first state
+		self.state = {}		# rspdx's last state line
+		self.last = ''		# last stderr line, for the box if rspdx dies
 		self.p = QProcess()
 		self.p.setWorkingDirectory(str(Path(path).parent))		# index.html, app.js if the waterfall comes back
 		self.p.readyReadStandardOutput.connect(self.out)
 		self.p.readyReadStandardError.connect(self.err)
 		self.p.finished.connect(self.ended)
 		self.p.errorOccurred.connect(lambda e: e == QProcess.ProcessError.FailedToStart and self.emit('gone', f"Couldn't run {path}.\n\n{self.p.errorString()}"))
-		self.p.start(str(path), ['-n'])		# no frequency: rx restores the last s/save
+		self.p.start(str(path), ['-n'])		# no frequency: rspdx restores the last s/save
 		return
 	# __init__
 
 	'''-------------------------------------------------------------------
-		data comming in every 50 ms from rspdx.cpp
-		emits signals with new rspdx valuse to class Shack()
+		lines coming in on rspdx's stdout: state and notices every 50 ms, meter every 250 ms
+		emits signals with new rspdx values to class Shack()
 	-------------------------------------------------------------------'''
 
 	def out(self):
@@ -72,7 +72,7 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			m = json.loads(bytes(self.p.readLine()).decode())
 			if m['type'] == 'state':
 				if not self.ok:
-					self.send('bm')		# first state: rx is up, ask for the bookmarks
+					self.send('bm')		# first state: rspdx is up, ask for the bookmarks
 				self.ok, self.state = True, m['state']
 				self.show()
 			elif m['type'] == 'notice':		# every command gets one; a refused command changes no state, so put the controls back
@@ -90,7 +90,7 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 		mhz and other real time values, including overload
 	-------------------------------------------------------------------'''
 
-	def show(self):		# rx's last state -> the window
+	def show(self):		# rspdx's last state -> the window
 		st = self.state
 		if not st:
 			return
@@ -103,11 +103,11 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
 
-	def err(self):		# rx's stderr goes to shack.log
+	def err(self):		# rspdx's stderr goes to shack.log
 		for line in bytes(self.p.readAllStandardError()).decode(errors='replace').splitlines():
 			if line.strip():
 				self.last = line.strip()
-				log.info(f'rx: {self.last}')
+				log.info(f'rspdx: {self.last}')
 	# err
 
 	'''-------------------------------------------------------------------
@@ -116,9 +116,9 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 	def ended(self, code, status):
 		if self.ok:
 			how = 'crashed' if status == QProcess.ExitStatus.CrashExit else f'stopped (exit {code})'
-			self.emit('gone', f'rx {how}.\n\nLast from rx: {self.last}\n(all of it is in shack.log)')
+			self.emit('gone', f'rspdx {how}.\n\nLast from rspdx: {self.last}\n(all of it is in shack.log)')
 		else:
-			self.emit('gone', f"Couldn't start the RSPdx.\n\n{self.last or 'rx exited with ' + str(code)}\n\nIs it plugged in? Is another program using it?")
+			self.emit('gone', f"Couldn't start the RSPdx.\n\n{self.last or 'rspdx exited with ' + str(code)}\n\nIs it plugged in? Is another program using it?")
 	# ended
 
 	'''-------------------------------------------------------------------
@@ -139,7 +139,7 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			self.send(f'bw {v}')
 		elif k in self.SWITCHES:		# on/off
 			self.send(f'{k} {int(v)}')
-		elif k == 'nbdb':		# blanker level; rx turns the blanker on at it
+		elif k == 'nbdb':		# blanker level; rspdx turns the blanker on at it
 			self.send(f'nb {v}')
 		elif k == 'save':
 			self.send('s')
@@ -147,10 +147,10 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 			self.send(f"{k} {v['hz']} {v['mode']}")
 		elif k == 'bmname':		# v = (bookmark, new name); '' goes back to the band label
 			self.send(f"bmname {v[0]['hz']} {v[0]['mode']} {v[1]}")
-	# send
+	# set
 
 	'''-------------------------------------------------------------------
-		writes to stdout, rspdx is calling controll.poll() every 50 ms
+		writes a command line to rspdx's stdin; rspdx reads it in Control::poll(), every 50 ms
 	-------------------------------------------------------------------'''
 
 	def send(self, line):
@@ -160,22 +160,22 @@ class Rx:		# rx -n (RSPdx) as a child process: commands on its stdin, JSON lines
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
 
-	def close(self):		# EOF on stdin is rx's cue to shut down cleanly
+	def close(self):		# EOF on stdin is rspdx's cue to shut down cleanly
 		self.p.finished.disconnect(self.ended)
 		self.p.closeWriteChannel()
 		if not self.p.waitForFinished(3000):
 			self.p.kill()
 			self.p.waitForFinished(1000)
-	# show
+	# close
 
-# class Rx
+# class Rspdx
 
 
 '''-------------------------------------------------------------------
 -------------------------------------------------------------------'''
 
 class Shack(QMainWindow):
-	got = pyqtSignal(str, object)		# rig reader thread -> GUI thread, receives signals from rspdx (Rx) to self.on_rig
+	got = pyqtSignal(str, object)		# rig reader thread -> GUI thread, receives signals from civ.Rig and Rspdx to self.on_rig
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -206,11 +206,11 @@ class Shack(QMainWindow):
 		self.ant.activated.connect(lambda i: self.rig and self.rig.set('ant', self.ant.itemText(i)))
 		self.ovl = QLabel()		# RF overload: blank until the first one
 		self.bw = QComboBox()
-		self.bw.addItems(Rx.BANDWIDTHS)
+		self.bw.addItems(Rspdx.BANDWIDTHS)
 		self.bw.activated.connect(lambda i: self.rig and self.rig.set('bw', i))
-		self.sw = {}		# rx command: toggle button
+		self.sw = {}		# rspdx command: toggle button
 		switches = QHBoxLayout()
-		for k, name in Rx.SWITCHES.items():
+		for k, name in Rspdx.SWITCHES.items():
 			b = self.sw[k] = QPushButton(name, checkable=True)
 			b.setStyleSheet('QPushButton:checked { background: #2a7d2a; color: white; font-weight: bold }')		# on = green
 			b.clicked.connect(lambda on, k=k: self.rig and self.rig.set(k, on))		# clicked, not toggled: the radio's own updates don't echo back
@@ -301,15 +301,15 @@ class Shack(QMainWindow):
 		self.on_rig('ptt_clients', 0)
 
 	'''-------------------------------------------------------------------
-		start the rspdx ussing the sdrplay api and i/q stream
+		start the rspdx program, which runs the RSPdx through the sdrplay api
 	-------------------------------------------------------------------'''
 
 	def open_rx(self):
-		if not Path(self.a.rx).is_file():
-			return self.oops(f"Can't find rx at {self.a.rx}.\n\nIs it built? (./build.sh)")
-		self.rig = Rx(self.a.rx, self.got.emit)
+		if not Path(self.a.rspdx).is_file():
+			return self.oops(f"Can't find rspdx at {self.a.rspdx}.\n\nIs it built? (./build.sh)")
+		self.rig = Rspdx(self.a.rspdx, self.got.emit)
 		self.smeter.setRange(-100, -40)		# the TUI's signal scale, dBFS in the passband
-		self.show_radio('RSPdx', Rx.MODES, 2000, (self.freq, self.mode, self.smeter, *self.rsp))		# no PTT on a receiver
+		self.show_radio('RSPdx', Rspdx.MODES, 2000, (self.freq, self.mode, self.smeter, *self.rsp))		# no PTT on a receiver
 		return
 	# open_rx
 
@@ -365,7 +365,7 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def poll(self):
-		if not isinstance(self.rig, civ.Rig):		# rx pushes its state; only CI-V needs asking
+		if not isinstance(self.rig, civ.Rig):		# rspdx pushes its state; only CI-V needs asking
 			return
 		if time.monotonic() - self.rig.heard > 3:		# polled 4x a second, so 3 s of silence = gone
 			return self.oops('The radio stopped answering.\n\nUnplugged or turned off?')
@@ -376,7 +376,7 @@ class Shack(QMainWindow):
 			self.n += 1
 
 	'''-------------------------------------------------------------------
-		slot that receives signals from rspdx (Rx)
+		slot that receives signals from civ.Rig and Rspdx
 	-------------------------------------------------------------------'''
 
 	def on_rig(self, k, v):
@@ -384,11 +384,11 @@ class Shack(QMainWindow):
 			self.freq.blockSignals(True)
 			self.freq.setValue(v)
 			self.freq.blockSignals(False)
-			if isinstance(self.rig, Rx):
-				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rx's call, not a command
+			if isinstance(self.rig, Rspdx):
+				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rspdx's call, not a command
 		elif k == 'mode' and self.mode.findText(v) >= 0:
 			self.mode.setCurrentText(v)
-			if isinstance(self.rig, Rx):		# as in the TUI: bandwidth presets are SSB only, the blanker isn't in WBFM
+			if isinstance(self.rig, Rspdx):		# as in the TUI: bandwidth presets are SSB only, the blanker isn't in WBFM
 				self.bw.setEnabled(v in ('LSB', 'USB'))
 				self.sw['nb'].setEnabled(v != 'WBFM')
 				self.nbdb.setEnabled(v != 'WBFM')
@@ -405,7 +405,7 @@ class Shack(QMainWindow):
 			quiet(w, w.setValue, v)
 		elif k == 'ant':
 			self.ant.setCurrentText(v.upper())
-		elif k == 'ovl':		# (now, count since rx started); red while overloaded
+		elif k == 'ovl':		# (now, count since rspdx started); red while overloaded
 			now, n = v
 			self.ovl.setText(f"{'OVERLOAD' if now else 'clear'} ({n})" if now or n else '')
 			self.ovl.setStyleSheet('color: white; background: red; font-weight: bold' if now else '')
@@ -524,14 +524,14 @@ if __name__ == '__main__':
 			ap.add_argument('--baud', type=int, default=115200)
 			ap.add_argument('--addr', type=lambda x: int(x, 0), default=0xA4)
 			ap.add_argument('--ptt', type=int, default=4532, help='rigctld-style PTT port for xara, 0 = off')
-			ap.add_argument('--rx', default=str(HERE / 'rx'), help='the rx program (run as rx -n)')
+			ap.add_argument('--rspdx', default=str(HERE / 'rspdx'), help='the rspdx program (run as rspdx -n)')
 			a = ap.parse_args()
 		else:
 			ap = argparse.ArgumentParser()
 			ap.add_argument('--baud', type=int, default=115200)
 			ap.add_argument('--addr', type=lambda x: int(x, 0), default=0xA4)
 			ap.add_argument('--ptt', type=int, default=4532, help='rigctld-style PTT port for xara, 0 = off')
-			ap.add_argument('--rx', default=str(HERE / 'rx'), help='the rx program (run as rx -n)')
+			ap.add_argument('--rspdx', default=str(HERE / 'rspdx'), help='the rspdx program (run as rspdx -n)')
 			a = ap.parse_args()
 		# if vscode
 

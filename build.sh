@@ -15,7 +15,7 @@ chmod 664 *.cpp *.h *.make
 # make -f am.make
 # make -f fm.make
 # make -f ssb.make
-make -f rx.make
+make -f rspdx.make
 
 # ./fm
 # taskset -c 2 ./am

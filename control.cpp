@@ -403,7 +403,7 @@ bool Control::command(const std::string& line) {
 		return true;
 	}
 
-	if (op == "bm") {		// rx -n: send the bookmark list
+	if (op == "bm") {		// rspdx -n: send the bookmark list
 		list_wanted_ = true;
 		return true;
 	}
@@ -434,7 +434,7 @@ bool Control::command(const std::string& line) {
 		return true;
 	}
 
-	if (op == "wf") {		// waterfall page on port 8700; rx opens the browser if no page connects
+	if (op == "wf") {		// waterfall page on port 8700; rspdx opens the browser if no page connects
 		std::string value;
 		if ((in >> value) && !(in >> extra) && (value == "0" || value == "1" || value == "on" || value == "off")) {
 			wf_on = value == "1" || value == "on";
@@ -569,8 +569,8 @@ bool Control::command(const std::string& line) {
 }
 
 /* ---------------------------------------------------------
-	called by rspdx while (running) loop
-	listens for data from the rspdx every 50 ms.
+	called by rspdx.cpp's while (running) loop
+	reads command lines from stdin (shack.py, or typed), at most every 50 ms
  --------------------------------------------------------- */
 
 bool Control::poll() {
