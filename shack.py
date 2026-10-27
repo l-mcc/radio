@@ -6,14 +6,56 @@ from pathlib import Path
 
 import serial
 from PyQt6.QtCore import pyqtSignal, QProcess, Qt, QTimer
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
-	QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QWidget)
+from PyQt6.QtGui import QFont, QKeySequence, QShortcut
+from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
+	QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
 
 import civ, styles
 
 HERE = Path(__file__).resolve().parent
 log = logging.getLogger('shack')		# set up in main by utils.setup_logging
+
+HELP = '''
+<h3>Radio</h3>
+<p>Pick IC-705 or RSPdx to open it, none to close it. Only one radio is open at a time; controls that don't apply are greyed out.</p>
+
+<h3>Frequency</h3>
+<p>Mouse wheel: 1 kHz steps, Ctrl+wheel: 10 kHz. Or type a value in MHz and press Enter. The radio's own changes don't overwrite what you're typing.</p>
+
+<h3>RSPdx</h3>
+<table cellspacing="4">
+<tr><td><b>Mode</b></td><td>LSB, USB, AM, WBFM</td></tr>
+<tr><td><b>Volume</b></td><td>0 to 2</td></tr>
+<tr><td><b>IF reduction</b></td><td>20-59 dB; more = less gain</td></tr>
+<tr><td><b>LNA reduction</b></td><td>0 = most gain; the top end depends on the band</td></tr>
+<tr><td><b>Antenna</b></td><td>A, B or C</td></tr>
+<tr><td><b>Bandwidth</b></td><td>SSB only. Narrow 300-2100 Hz, Normal 300-3100, Wide 200-3300, Digital 200-3000 (for decoders)</td></tr>
+<tr><td><b>Overload</b></td><td>red while the RSPdx reports RF overload; the count is since it started</td></tr>
+<tr><td><b>ADC</b></td><td>everything coming into the RSPdx. Red above -6 dBFS: raise IF or LNA reduction</td></tr>
+<tr><td><b>Signal</b></td><td>level inside the passband, dBFS</td></tr>
+</table>
+
+<h3>Buttons (green = on)</h3>
+<table cellspacing="4">
+<tr><td><b>RF notch, DAB notch</b></td><td>the RSPdx's MW/FM broadcast and DAB band filters</td></tr>
+<tr><td><b>HDR</b></td><td>high dynamic range mode, below 2 MHz only</td></tr>
+<tr><td><b>Digital out</b></td><td>48 kHz 16-bit mono audio as UDP to 127.0.0.1:7355, for decode.py, xara-monitor, direwolf</td></tr>
+<tr><td><b>Waterfall</b></td><td>web page at http://localhost:8700/ (opens a browser if none connects)</td></tr>
+<tr><td><b>Noise blanker</b></td><td>SSB and AM. The dB box is the trigger level: lower catches more, and changing it turns the blanker on. /s is pulses blanked per second: about 1/s for the electric fence; dozens on plain noise means the level is too low</td></tr>
+<tr><td><b>Save</b></td><td>stores frequency, mode and settings as a bookmark, and starts here next time</td></tr>
+</table>
+
+<h3>Bookmarks (right)</h3>
+<p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
+
+<h3>IC-705</h3>
+<p>Frequency, mode, S-meter and PTT. TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+
+<p><i>F1 opens this help.</i></p>
+'''
+
+'''-------------------------------------------------------------------
+-------------------------------------------------------------------'''
 
 def sunits(db):		# S9-relative dB -> S7 / S9+20
 	return f'S{max(0, (db + 54) // 6)}' if db <= 0 else f'S9+{db}'
@@ -252,6 +294,15 @@ class Shack(QMainWindow):
 			g.addWidget(w, row, 1, 1, 2 if w in (self.ovl, self.adc, self.smeter, self.tx) else 1)
 		row += 1
 		g.addLayout(switches, row, 0, 1, 3)
+		self.helpw = None
+		more = QHBoxLayout()		# second button row
+		hb = QPushButton('Help', toolTip='What everything does (F1)')
+		hb.clicked.connect(self.help)
+		QShortcut(QKeySequence.StandardKey.HelpContents, self, self.help)
+		more.addWidget(hb)
+		more.addStretch()
+		row += 1
+		g.addLayout(more, row, 0, 1, 3)
 		g.setRowStretch(row + 1, 1)		# spare height goes below the rows, not into them
 		box = QWidget()
 		box.setLayout(g)
@@ -354,6 +405,26 @@ class Shack(QMainWindow):
 			w.setEnabled(False)
 		return
 	# shut
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def help(self):		# non-modal: the radio stays usable while it's open
+		if not self.helpw:
+			self.helpw = QDialog(self, windowTitle='shack help')
+			t = QTextBrowser(openExternalLinks=True)
+			t.setHtml(HELP)
+			b = QPushButton('Close')
+			b.clicked.connect(self.helpw.close)
+			v = QVBoxLayout(self.helpw)
+			v.addWidget(t)
+			v.addWidget(b, alignment=Qt.AlignmentFlag.AlignRight)
+			self.helpw.resize(640, 640)
+		self.helpw.show()
+		self.helpw.raise_()
+		self.helpw.activateWindow()
+		return
+	# help
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
