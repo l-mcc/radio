@@ -42,6 +42,7 @@ HELP = '''
 <tr><td><b>Digital out</b></td><td>48 kHz 16-bit mono audio as UDP to 127.0.0.1:7355, for decode.py, xara-monitor, direwolf</td></tr>
 <tr><td><b>Waterfall</b></td><td>web page at http://localhost:8700/ (opens a browser if none connects)</td></tr>
 <tr><td><b>Noise blanker</b></td><td>SSB and AM. The dB box is the trigger level: lower catches more, and changing it turns the blanker on. /s is pulses blanked per second: about 1/s for the electric fence; dozens on plain noise means the level is too low</td></tr>
+<tr><td><b>Noise reduction</b></td><td>RNNoise, a neural network trained on speech: takes the hiss and noise floor out from under voice. Like SDRconnect's NR it won't dig very weak signals out of heavy noise, and it can chop up music and CW, so turn it off for those. Digital out (the decoders) gets the audio before it</td></tr>
 <tr><td><b>Save</b></td><td>stores frequency, mode and settings as a bookmark, and starts here next time</td></tr>
 </table>
 
@@ -84,7 +85,7 @@ def quiet(w, f, *a):		# change a widget from the radio's side without echoing it
 class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON lines on its stdout; same face as civ.Rig
 	MODES = ['LSB', 'USB', 'AM', 'WBFM']
 	BANDWIDTHS = ['Narrow voice  1.8 kHz', 'Normal voice  2.8 kHz', 'Wide voice  3.1 kHz', 'Digital  2.8 kHz']		# bw 0-3, SSB only
-	SWITCHES = {'notch': 'RF notch', 'dab': 'DAB notch', 'hdr': 'HDR', 'digi': 'Digital out', 'wf': 'Waterfall', 'nb': 'Noise blanker'}		# rspdx command: button
+	SWITCHES = {'notch': 'RF notch', 'dab': 'DAB notch', 'hdr': 'HDR', 'digi': 'Digital out', 'wf': 'Waterfall', 'nb': 'Noise blanker', 'nr': 'Noise reduction'}		# rspdx command: button
 
 	'''-------------------------------------------------------------------
 		starts the rspdx program (C++ demodulators) as a child process
@@ -252,16 +253,18 @@ class Shack(QMainWindow):
 		self.bw.activated.connect(lambda i: self.rig and self.rig.set('bw', i))
 		self.sw = {}		# rspdx command: toggle button
 		switches = QHBoxLayout()
+		self.nbdb = QSpinBox(minimum=8, maximum=20, value=12, suffix=' dB', keyboardTracking=False, toolTip='Blanker trigger level; changing it turns the blanker on')
+		self.nbdb.valueChanged.connect(lambda v: self.rig and self.rig.set('nbdb', v))
+		self.nbr = QLabel(toolTip='Blanker pulses per second')
+		self.nbr.setFixedWidth(self.nbr.fontMetrics().horizontalAdvance('9999.9/s'))		# changing text mustn't resize the panel
 		for k, name in Rspdx.SWITCHES.items():
 			b = self.sw[k] = QPushButton(name, checkable=True)
 			b.clicked.connect(lambda on, k=k: self.rig and self.rig.set(k, on))		# clicked, not toggled: the radio's own updates don't echo back
 			switches.addWidget(b)
-		self.nbdb = QSpinBox(minimum=8, maximum=20, value=12, suffix=' dB', keyboardTracking=False, toolTip='Blanker trigger level; changing it turns the blanker on')
-		self.nbdb.valueChanged.connect(lambda v: self.rig and self.rig.set('nbdb', v))
-		switches.addWidget(self.nbdb)
-		self.nbr = QLabel(toolTip='Blanker pulses per second')
-		self.nbr.setFixedWidth(self.nbr.fontMetrics().horizontalAdvance('9999.9/s'))		# changing text mustn't resize the panel
-		switches.addWidget(self.nbr)
+			if k == 'nb':		# its level and rate sit next to it
+				switches.addWidget(self.nbdb)
+				switches.addWidget(self.nbr)
+		self.sw['nr'].setToolTip('RNNoise: removes the noise floor under voice (SSB, AM). Turn off for very weak signals, music and CW; Digital out is unaffected')
 		self.save = QPushButton('Save', toolTip='Store these settings for this frequency and mode, and start here next time (like s in the TUI)')
 		self.save.clicked.connect(lambda: self.rig and self.rig.set('save', 1))
 		switches.addWidget(self.save)

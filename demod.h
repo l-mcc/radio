@@ -6,10 +6,11 @@
 #include <vector>
 
 using IQ = std::vector<std::complex<float>>;
+class Denoise;		// demod.cpp: RNNoise
 
 class Demod {		// one receive mode: everything after the API's IQ stream
 public:
-	virtual ~Demod() = default;
+	virtual ~Demod();
 	virtual void process(const IQ &iq, std::vector<float> &audio) = 0;
 	virtual bool set_mode(const std::string &) { return false; }		// switch in place (lsb <-> usb)
 	virtual void tune(double if_hz) { (void)if_hz; }		// hardware LO minus dial, Hz
@@ -26,8 +27,10 @@ public:
 	bool nb = false;		// noise blanker on the 100 kS/s IQ (SSB, AM); rspdx follows nb_on, nb_db
 	float nb_db = 12;		// trigger: this far over the running power
 	uint64_t nb_pulses = 0;		// pulses blanked; the caller reads and resets
+	bool nr = false;		// RNNoise on the audio after the decoder tap; rspdx follows nr_on
 protected:
-	void finish(std::vector<float> &audio, float vol, bool limit = true);		// audio holds the pre-volume signal; copies it to clean if tapped, then applies volume
+	void finish(std::vector<float> &audio, float vol, bool limit = true);		// audio holds the pre-volume signal; copies it to clean if tapped, denoises if nr, then applies volume
+	std::unique_ptr<Denoise> den;		// made when nr goes on, dropped when it goes off
 };
 
 std::unique_ptr<Demod> make_demod(const std::string &mode, const float &vol);		// lsb, usb, am, wbfm; nullptr otherwise

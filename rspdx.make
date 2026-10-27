@@ -2,7 +2,7 @@ CXX = g++
 MODE ?= O3
 CXXFLAGS = -std=c++17 -Wall -Wextra -pthread -march=native -$(MODE)
 LDFLAGS = -L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,--disable-new-dtags
-LDLIBS = -lsdrplay_api -lliquid -lpulse-simple -lpulse -lsqlite3
+LDLIBS = -lsdrplay_api -lliquid -lrnnoise -lpulse-simple -lpulse -lsqlite3
 OBJS = rsp.o control.o audio.o waterfall.o demod.o
 
 rspdx: rspdx.cpp demod.h $(OBJS)

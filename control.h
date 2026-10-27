@@ -89,6 +89,7 @@ extern bool wf_on;		// waterfall wanted (-w); the receiver creates or drops it
 extern bool digi_on;		// decoder feed wanted: 48 kHz s16 mono, UDP 127.0.0.1:7355
 extern bool nb_on;		// noise blanker wanted (SSB, AM)
 extern int nb_db;		// its trigger, dB over the running power
+extern bool nr_on;		// noise reduction (RNNoise) wanted
 
 const char* band_mode(double mhz);		// band-plan default mode, nullptr outside the table
 const char* band_name(double mhz);		// "40m", "31m SW", ...; "" outside the table

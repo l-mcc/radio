@@ -1,5 +1,6 @@
 #include "demod.h"
 #include <liquid/liquid.h>
+#include <rnnoise.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -272,11 +273,56 @@ private:
 };
 }
 
+// ---------------------------------------------------------
+//
+// ---------------------------------------------------------
+
+class Denoise {		// RNNoise (speech-trained noise suppression) only runs at 48 kHz in 480-sample (10 ms) frames: up to 48 kHz, frames, back down
+	public:
+		explicit Denoise(double rate) : r_up(48000.0f / rate), r_down(rate / 48000.0f),
+			up(msresamp_rrrf_create(r_up, 60.0f)), down(msresamp_rrrf_create(r_down, 60.0f)), st(rnnoise_create(nullptr)) {}
+		~Denoise() {
+			msresamp_rrrf_destroy(up);
+			msresamp_rrrf_destroy(down);
+			rnnoise_destroy(st);
+		}
+		void run(std::vector<float> &audio) {		// in place; the length varies a little per call (whole frames only), the rate doesn't
+			size_t n0 = in48.size();
+			unsigned int k = 0;
+			in48.resize(n0 + static_cast<size_t>(audio.size() * r_up) + 64);
+			msresamp_rrrf_execute(up, audio.data(), audio.size(), in48.data() + n0, &k);
+			in48.resize(n0 + k);
+			size_t frames = in48.size() / frame;
+			out48.resize(frames * frame);
+			for (size_t f = 0; f < frames; ++f) {
+				for (size_t i = 0; i < frame; ++i) x[i] = in48[f * frame + i] * 32768.0f;		// it wants 16-bit sample values
+				rnnoise_process_frame(st, y.data(), x.data());
+				for (size_t i = 0; i < frame; ++i) out48[f * frame + i] = y[i] / 32768.0f;
+			}
+			in48.erase(in48.begin(), in48.begin() + frames * frame);		// the partial frame waits for the next block
+			audio.resize(static_cast<size_t>(out48.size() * r_down) + 64);
+			msresamp_rrrf_execute(down, out48.data(), out48.size(), audio.data(), &k);
+			audio.resize(k);
+		}
+
+	private:
+		static constexpr size_t frame = 480;
+		float r_up, r_down;
+		msresamp_rrrf up, down;
+		DenoiseState *st;
+		std::vector<float> in48, out48;
+		std::array<float, frame> x{}, y{};
+};		// class Denoise
+
+Demod::~Demod() = default;		// here, where Denoise is complete
+
 void Demod::finish(std::vector<float> &audio, float vol, bool limit) {
 	if (tap) {
 		clean.resize(audio.size());
 		for (size_t i = 0; i < audio.size(); ++i) clean[i] = std::clamp(audio[i], -0.9f, 0.9f);
 	}
+	if (nr != bool(den)) den = nr ? std::make_unique<Denoise>(audio_rate) : nullptr;
+	if (den) den->run(audio);
 	for (float &s : audio) s = limit ? std::clamp(s * vol, -0.9f, 0.9f) : s * vol;
 }
 

@@ -26,6 +26,7 @@ bool wf_on = false;
 bool digi_on = false;
 bool nb_on = false;
 int nb_db = 12;
+bool nr_on = false;
 
 void set_ssb_bw(int index) {
 	ssb_bw_index = (index % bandwidth_count + bandwidth_count) % bandwidth_count;
@@ -95,7 +96,7 @@ bool Control::open(const std::string& database, bool restore_last) {
 		" lna INTEGER NOT NULL, antenna TEXT NOT NULL,"
 		" rf_notch INTEGER NOT NULL DEFAULT 0, dab_notch INTEGER NOT NULL DEFAULT 0,"
 		" hdr INTEGER NOT NULL DEFAULT 0, ref REAL NOT NULL DEFAULT 0,"
-		" bw INTEGER NOT NULL DEFAULT -1, wf INTEGER NOT NULL DEFAULT 0, zoom INTEGER NOT NULL DEFAULT 0, nb INTEGER NOT NULL DEFAULT -1,"
+		" bw INTEGER NOT NULL DEFAULT -1, wf INTEGER NOT NULL DEFAULT 0, zoom INTEGER NOT NULL DEFAULT 0, nb INTEGER NOT NULL DEFAULT -1, nr INTEGER NOT NULL DEFAULT -1,"
 		" name TEXT NOT NULL DEFAULT '', hits INTEGER NOT NULL DEFAULT 1,"
 		" updated_at TEXT DEFAULT CURRENT_TIMESTAMP,"
 		" PRIMARY KEY(mode, frequency_hz))";
@@ -137,6 +138,7 @@ bool Control::open(const std::string& database, bool restore_last) {
 			{"settings", "zoom", "INTEGER NOT NULL DEFAULT 0"}, {"settings", "name", "TEXT NOT NULL DEFAULT ''"},
 			{"settings", "hits", "INTEGER NOT NULL DEFAULT 1"},		// existing rows start at 1
 			{"settings", "nb", "INTEGER NOT NULL DEFAULT -1"},		// -1: saved before the blanker, leave it alone
+			{"settings", "nr", "INTEGER NOT NULL DEFAULT -1"},		// -1: saved before noise reduction, leave it alone
 			{"last_frequency", "saved_at", "INTEGER NOT NULL DEFAULT 0"}}) {
 		sqlite3_stmt* probe = nullptr;
 		std::string sql = std::string("SELECT ") + column + " FROM " + table + " LIMIT 0";
@@ -181,7 +183,7 @@ bool Control::open(const std::string& database, bool restore_last) {
 }
 
 bool Control::load(bool startup) {
-	const char* sql = "SELECT volume, if_reduction, lna, antenna, rf_notch, dab_notch, hdr, ref, bw, wf, zoom, nb FROM settings "
+	const char* sql = "SELECT volume, if_reduction, lna, antenna, rf_notch, dab_notch, hdr, ref, bw, wf, zoom, nb, nr FROM settings "
 		"WHERE mode = ? AND frequency_hz = ?";
 	sqlite3_stmt* stmt = nullptr;
 	if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
@@ -214,6 +216,7 @@ bool Control::load(bool startup) {
 		int nb = sqlite3_column_int(stmt, 11);		// -1: saved before the blanker; 0 off; else its trigger dB
 		if (nb >= 0) nb_on = nb > 0;
 		if (nb >= 8 && nb <= 20) nb_db = nb;
+		if (sqlite3_column_int(stmt, 12) >= 0) nr_on = sqlite3_column_int(stmt, 12) != 0;		// -1: saved before noise reduction
 		if (!ui_active_) fprintf(stderr, "Control: restored %s %.6f MHz\n", mode_.c_str(), hz_ / 1e6);
 	}
 	sqlite3_finalize(stmt);
@@ -259,12 +262,12 @@ bool Control::save(const std::string& name) {
 		return false;
 	}
 	const char* sql =
-		"INSERT INTO settings (mode, frequency_hz, volume, if_reduction, lna, antenna, rf_notch, dab_notch, hdr, ref, bw, wf, zoom, name, nb) "
-		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+		"INSERT INTO settings (mode, frequency_hz, volume, if_reduction, lna, antenna, rf_notch, dab_notch, hdr, ref, bw, wf, zoom, name, nb, nr) "
+		"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
 		"ON CONFLICT(mode, frequency_hz) DO UPDATE SET "
 		"volume=excluded.volume, if_reduction=excluded.if_reduction, "
 		"lna=excluded.lna, antenna=excluded.antenna, "
-		"rf_notch=excluded.rf_notch, dab_notch=excluded.dab_notch, hdr=excluded.hdr, ref=excluded.ref, bw=excluded.bw, wf=excluded.wf, zoom=excluded.zoom, nb=excluded.nb, "
+		"rf_notch=excluded.rf_notch, dab_notch=excluded.dab_notch, hdr=excluded.hdr, ref=excluded.ref, bw=excluded.bw, wf=excluded.wf, zoom=excluded.zoom, nb=excluded.nb, nr=excluded.nr, "
 		"name=CASE excluded.name WHEN '' THEN settings.name ELSE excluded.name END, "		// hits untouched: a re-save keeps its count
 		"updated_at=CURRENT_TIMESTAMP";
 	sqlite3_stmt* stmt = nullptr;
@@ -285,6 +288,7 @@ bool Control::save(const std::string& name) {
 	sqlite3_bind_int(stmt, 13, zoom_);
 	sqlite3_bind_text(stmt, 14, name.c_str(), -1, SQLITE_TRANSIENT);
 	sqlite3_bind_int(stmt, 15, nb_on ? nb_db : 0);
+	sqlite3_bind_int(stmt, 16, nr_on ? 1 : 0);
 	bool ok = sqlite3_step(stmt) == SQLITE_DONE;
 	if (!ok)
 		fprintf(stderr, "Control: save failed: %s\n", sqlite3_errmsg(db_));
@@ -390,8 +394,8 @@ bool Control::command(const std::string& line) {
 	if (op == "q" || op == "quit") return false;
 	if (op == "status") { status(); notice_ = "Settings refreshed"; return true; }
 	if (op == "help" || op == "h" || op == "?") {
-		notice_ = "f MHz | m lsb/usb/am/wbfm | v volume | if dB | lna state | ant a/b/c | hdr 0/1 | notch 0/1 | dab 0/1 | ref dB | zoom 0-2 | bw 0-3 | wf 0/1 | digi 0/1 | nb 0/1/dB | s [name] | q";
-		if (!ui_active_) fprintf(stderr, "Commands: f <MHz>, m <lsb|usb|am|wbfm>, v <volume>, g <IF-reduction> <LNA>, if <dB>, lna <state>, ant <a|b|c>, hdr <0|1>, notch <0|1>, dab <0|1>, ref <dB>, zoom <0-2>, bw <0-3>, wf <0|1>, digi <0|1>, nb <0|1|8-20>, s/save [name], status, q\n");
+		notice_ = "f MHz | m lsb/usb/am/wbfm | v volume | if dB | lna state | ant a/b/c | hdr 0/1 | notch 0/1 | dab 0/1 | ref dB | zoom 0-2 | bw 0-3 | wf 0/1 | digi 0/1 | nb 0/1/dB | nr 0/1 | s [name] | q";
+		if (!ui_active_) fprintf(stderr, "Commands: f <MHz>, m <lsb|usb|am|wbfm>, v <volume>, g <IF-reduction> <LNA>, if <dB>, lna <state>, ant <a|b|c>, hdr <0|1>, notch <0|1>, dab <0|1>, ref <dB>, zoom <0-2>, bw <0-3>, wf <0|1>, digi <0|1>, nb <0|1|8-20>, nr <0|1>, s/save [name], status, q\n");
 		return true;
 	}
 
@@ -461,6 +465,15 @@ bool Control::command(const std::string& line) {
 			if (db >= 8) nb_db = db;
 			notice_ = nb_on ? "Noise blanker on, " + std::to_string(nb_db) + " dB" : "Noise blanker off";
 		} else notice_ = "Usage: nb 0/1, or nb 8-20 (dB)";
+		return true;
+	}
+
+	if (op == "nr") {		// nr 0|1|off|on: RNNoise on the audio (voice; the Digital out feed is taken before it)
+		std::string value;
+		if ((in >> value) && !(in >> extra) && (value == "0" || value == "1" || value == "on" || value == "off")) {
+			nr_on = value == "1" || value == "on";
+			notice_ = nr_on ? "Noise reduction on" : "Noise reduction off";
+		} else notice_ = "Usage: nr 0/1";
 		return true;
 	}
 
