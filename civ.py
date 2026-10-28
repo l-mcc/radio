@@ -38,6 +38,13 @@ def band_window(khz):		# (range code, lo, hi) for the ham band around khz, or a 
 	code, (a, b) = rng
 	return code, max(lo, a), min(hi, b)
 log = logging.getLogger('civ')
+SWR = [(0, 1.0), (48, 1.5), (80, 2.0), (120, 3.0)]		# 15 12 meter -> SWR, Icom's table (the X6200 assumed the same); +1 per 40 above
+
+def swr(v):
+	if v >= SWR[-1][0]:
+		return SWR[-1][1] + (v - SWR[-1][0]) / 40
+	(a, x), (b, y) = next((p, q) for p, q in zip(SWR, SWR[1:]) if v < q[0])
+	return x + (v - a) / (b - a) * (y - x)
 
 RIGS = {		# port: by-id pattern of the CI-V port; top: MHz; att: 11 xx value for on; agc: 16 12 values; watts: power at 00 and 255 (None = show %)
 	'IC-705': dict(port='*IC-705*if00', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None),
@@ -144,6 +151,8 @@ class Rig:
 		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x02:
 			v = int(d[1:].hex())		# 0 = S0, 120 = S9, 241 = S9+60
 			s.emit('smeter', round(v / 120 * 54 - 54 if v <= 120 else (v - 120) / 121 * 60))
+		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x12 and d[1:].hex().isdigit():
+			s.emit('swr', (swr(int(d[1:].hex())), int(d[1:].hex())))		# (SWR, raw meter)
 		elif cmd == 0x27 and len(d) == 5 and d[0] == 0x19:		# ref level: 00, dB BCD (xx.xx), sign
 			s.emit('ref', int(d[2:4].hex()) / 100 * (-1 if d[4] else 1))
 		elif cmd == 0x27 and len(d) == 3 and d[0] in RSCOPE:

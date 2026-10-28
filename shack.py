@@ -50,7 +50,7 @@ HELP = '''
 <p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, mode, volume, AGC, Preamp, ATT, S-meter, transmit power and PTT. Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, mode, volume, AGC, Preamp, ATT, S-meter, transmit power and PTT. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -310,6 +310,7 @@ class Shack(QMainWindow):
 		self.bmlist = []
 		self.rsp = (self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
+		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
 		self.tx = QLabel('RX')
 		self.tx.setFont(QFont('monospace', 16, QFont.Weight.Bold))
 		self.clients = QLabel()
@@ -319,7 +320,7 @@ class Shack(QMainWindow):
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol), ('AGC', self.agc),
-				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('Power', self.power), ('PTT', self.tx)]):
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.tx)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
 			g.addWidget(self.labels[w], row, 0)
@@ -345,7 +346,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.mode, self.vol, self.agc, self.smeter, self.power, self.tx, self.sw['pre'], self.sw['att'], *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.mode, self.vol, self.agc, self.smeter, self.swr, self.power, self.tx, self.sw['pre'], self.sw['att'], *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -391,7 +392,7 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.mode, self.vol, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, self.power, self.tx))		# nb, nr: the radio's own, on/off
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.mode, self.vol, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, self.swr, self.power, self.tx))		# nb, nr: the radio's own, on/off
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
@@ -455,6 +456,8 @@ class Shack(QMainWindow):
 		self.smeter.setFormat('')
 		self.nbr.setText('')
 		self.pwrv.setText('')
+		self.swr.setText('')
+		self.swr.setStyleSheet('')
 		for b in self.sw.values():
 			b.setChecked(False)
 		self.on_rig('ptt', 0)
@@ -499,6 +502,8 @@ class Shack(QMainWindow):
 			return self.oops('The radio stopped answering.\n\nUnplugged or turned off?')
 		if time.monotonic() - self.rig.last_set > 0.5:		# stay out of the way of user commands
 			self.rig.send(0x15, 0x02)
+			self.rig.send(0x15, 0x12)		# SWR
+			self.rig.send(0x1C, 0x00)		# TX/RX, so a short transmission (a tuner cycle) shows
 			if self.n % 4 == 0:
 				self.rig.read_fast()
 				for k in ('vol', 'nb', 'nr', 'pwr', 'pre', 'agc'):		# so the radio's own knob and buttons show up here too
@@ -592,6 +597,12 @@ class Shack(QMainWindow):
 			for r, b in enumerate(v):
 				for c, t in enumerate((b['name'], f"{b['hz'] / 1e6:.6f}", b['mode'].upper(), str(b['hits']))):
 					self.bms.setItem(r, c, QTableWidgetItem(t))
+		elif k == 'swr':
+			r, raw = v
+			if raw or (self.rig and self.rig.tx):		# receiving reads 0: keep the last transmission's value
+				self.swr.setText(f'{r:.1f}' + (' +' if raw >= 255 else ''))
+				self.swr.setToolTip(f'SWR meter {raw}/255')
+				self.swr.setStyleSheet('color: white; background: red' if r > 3 else 'color: black; background: orange' if r > 2 else '')
 		elif k == 'ptt':
 			self.tx.setText('TX' if v else 'RX')
 			self.tx.setStyleSheet('color: white; background: red' if v else '')
