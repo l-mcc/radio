@@ -249,6 +249,8 @@ class Rig:
 		elif k == 'att':
 			s.send(0x11, 0x20 if int(v) else 0x00)
 			s.send(0x11)
+		elif k == 'v':		# shack's volume 0-1 -> AF level 0-255
+			s.set('vol', round(float(v) * 255))
 		elif k in CTL:
 			cmd, sub = CTL[k]
 			v = int(v)

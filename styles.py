@@ -50,4 +50,12 @@ style = '''
 		background-color: #a8c8a8;
 		color: #e8e8e8;
 	}
+
+	QLabel:enabled, QSpinBox:enabled, QDoubleSpinBox:enabled, QComboBox:enabled {
+		font-weight: bold;
+	}
+
+	QLabel:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {
+		color: #c8c8c8;
+	}
 '''

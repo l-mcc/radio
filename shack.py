@@ -5,7 +5,7 @@ import argparse, json, logging, sys, time
 from pathlib import Path
 
 import serial
-from PyQt6.QtCore import pyqtSignal, QProcess, Qt, QTimer
+from PyQt6.QtCore import pyqtSignal, QEvent, QProcess, Qt, QTimer
 from PyQt6.QtGui import QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
 	QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
@@ -17,7 +17,7 @@ log = logging.getLogger('shack')		# set up in main by utils.setup_logging
 
 HELP = '''
 <h3>Radio</h3>
-<p>Pick IC-705, RSPdx or Xiegu x6200 to open it, none to close it. Only one radio is open at a time; controls that don't apply are greyed out.</p>
+<p>Pick IC-705, RSPdx or Xiegu x6200 to open it, none to close it. Only one radio is open at a time; controls that don't apply are greyed out, the ones that do are bold.</p>
 
 <h3>Frequency</h3>
 <p>Mouse wheel: 1 kHz steps, Ctrl+wheel: 10 kHz. Or type a value in MHz and press Enter. The radio's own changes don't overwrite what you're typing.</p>
@@ -50,7 +50,7 @@ HELP = '''
 <p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, mode, S-meter and PTT. TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, mode, volume, S-meter and PTT. TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -287,18 +287,21 @@ class Shack(QMainWindow):
 		self.bms.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.bms.customContextMenuRequested.connect(self.bm_menu)
 		self.bmlist = []
-		self.rsp = (self.vol, self.ifr, self.lna, self.ant, self.ovl, self.bw, *self.sw.values(), self.nbdb, self.save, self.adc, self.bms)		# RSPdx-only controls
+		self.rsp = (self.ifr, self.lna, self.ant, self.ovl, self.bw, *self.sw.values(), self.nbdb, self.save, self.adc, self.bms)		# RSPdx-only controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.tx = QLabel('RX')
 		self.tx.setFont(QFont('monospace', 16, QFont.Weight.Bold))
 		self.clients = QLabel()
 		self.statusBar().addPermanentWidget(self.clients)
 
+		self.labels = {}		# control: its row label
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol),
 				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('PTT', self.tx)]):
-			g.addWidget(QLabel(name), row, 0)
+			self.labels[w] = QLabel(name)
+			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
+			g.addWidget(self.labels[w], row, 0)
 			g.addWidget(w, row, 1, 1, 2 if w in (self.ovl, self.adc, self.smeter, self.tx) else 1)
 		row += 1
 		g.addLayout(switches, row, 0, 1, 3)
@@ -359,7 +362,7 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, modes, top, (self.freq, self.mode, self.smeter, self.tx))
+		self.show_radio(name, modes, top, (self.freq, self.mode, self.vol, self.smeter, self.tx))
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
@@ -373,7 +376,7 @@ class Shack(QMainWindow):
 			return self.oops(f"Can't find rspdx at {self.a.rspdx}.\n\nIs it built? (./build.sh)")
 		self.rig = Rspdx(self.a.rspdx, self.got.emit)
 		self.smeter.setRange(-100, -40)		# the TUI's signal scale, dBFS in the passband
-		self.show_radio('RSPdx', Rspdx.MODES, 2000, (self.freq, self.mode, self.smeter, *self.rsp))		# no PTT on a receiver
+		self.show_radio('RSPdx', Rspdx.MODES, 2000, (self.freq, self.mode, self.vol, self.smeter, *self.rsp))		# no PTT on a receiver
 		return
 	# open_rx
 
@@ -412,7 +415,7 @@ class Shack(QMainWindow):
 		for b in self.sw.values():
 			b.setChecked(False)
 		self.on_rig('ptt', 0)
-		for w in (self.freq, self.mode, self.smeter, self.tx, *self.rsp):
+		for w in (self.freq, self.mode, self.vol, self.smeter, self.tx, *self.rsp):
 			w.setEnabled(False)
 		return
 	# shut
@@ -456,7 +459,17 @@ class Shack(QMainWindow):
 			self.rig.send(0x15, 0x02)
 			if self.n % 4 == 0:
 				self.rig.read_fast()
+				self.rig.send(*civ.CTL['vol'])		# the radio's own knob shows up here too
 			self.n += 1
+
+	'''-------------------------------------------------------------------
+		a row label follows its control's enabled state
+	-------------------------------------------------------------------'''
+
+	def eventFilter(self, w, e):
+		if e.type() == QEvent.Type.EnabledChange and w in self.labels:
+			self.labels[w].setEnabled(w.isEnabled())
+		return super().eventFilter(w, e)
 
 	'''-------------------------------------------------------------------
 		slot that receives signals from civ.Rig and Rspdx
@@ -483,6 +496,8 @@ class Shack(QMainWindow):
 				quiet(self.nbdb, self.nbdb.setValue, v)
 		elif k == 'v':
 			quiet(self.vol, self.vol.setValue, v)
+		elif k == 'vol':		# CI-V AF level 0-255
+			quiet(self.vol, self.vol.setValue, v / 255)
 		elif k in ('if', 'lna'):
 			w = self.ifr if k == 'if' else self.lna
 			quiet(w, w.setValue, v)
