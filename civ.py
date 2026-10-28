@@ -56,7 +56,7 @@ def tobcd(n, nbytes=5):
 
 class Rig:
 	def __init__(s, dev, baud, addr, emit):
-		s.ser = serial.Serial(None, baud, timeout=0.2)
+		s.ser = serial.Serial(None, baud, timeout=0.2, exclusive=True)		# a second program opening the port gets 'busy' instead of stealing replies
 		s.ser.port, s.ser.dtr, s.ser.rts = dev, False, False		# held low: some radios key TX on RTS
 		s.ser.open()
 		s.addr, s.emit = addr, emit		# emit(kind, value) is called from the reader thread
