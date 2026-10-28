@@ -213,7 +213,7 @@ class Rig:
 			s.send(0x03)		# read back so the UI settles immediately
 		elif k == 'mode':
 			base, data = v.removesuffix('-D'), v.endswith('-D')
-			s.send(0x06, MODES[base])
+			s.send(0x06, MODES[base], 0x01)		# filter byte required by the X6200 (it ignores 06 xx alone); FIL1
 			if base in DATA_OK:
 				s.send(0x1A, 0x06, *((0x01, 0x01) if data else (0x00, 0x00)))		# data mode, FIL1
 			s.read_fast(base)
