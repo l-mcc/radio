@@ -50,7 +50,7 @@ HELP = '''
 <p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, mode, volume, S-meter and PTT. TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, mode, volume, S-meter and PTT. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -362,7 +362,7 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, modes, top, (self.freq, self.mode, self.vol, self.smeter, self.tx))
+		self.show_radio(name, modes, top, (self.freq, self.mode, self.vol, self.sw['nb'], self.sw['nr'], self.smeter, self.tx))		# nb, nr: the radio's own, on/off
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
@@ -459,7 +459,8 @@ class Shack(QMainWindow):
 			self.rig.send(0x15, 0x02)
 			if self.n % 4 == 0:
 				self.rig.read_fast()
-				self.rig.send(*civ.CTL['vol'])		# the radio's own knob shows up here too
+				for k in ('vol', 'nb', 'nr'):		# so the radio's own knob and buttons show up here too
+					self.rig.send(*civ.CTL[k])
 			self.n += 1
 
 	'''-------------------------------------------------------------------
@@ -492,7 +493,7 @@ class Shack(QMainWindow):
 			self.bw.setCurrentIndex(v)
 		elif k in self.sw:
 			self.sw[k].setChecked(bool(v))
-			if k == 'nb' and v:		# nb carries the level when on, 0 when off
+			if k == 'nb' and v and isinstance(self.rig, Rspdx):		# rspdx's nb carries the level when on, 0 when off
 				quiet(self.nbdb, self.nbdb.setValue, v)
 		elif k == 'v':
 			quiet(self.vol, self.vol.setValue, v)
