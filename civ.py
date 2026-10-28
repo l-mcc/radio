@@ -46,10 +46,10 @@ def swr(v):
 	(a, x), (b, y) = next((p, q) for p, q in zip(SWR, SWR[1:]) if v < q[0])
 	return x + (v - a) / (b - a) * (y - x)
 
-RIGS = {		# port: by-id pattern of the CI-V port; top: MHz; att: 11 xx value for on; agc: 16 12 values; watts: power at 00 and 255 (None = show %)
-	'IC-705': dict(port='*IC-705*if00', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None),
+RIGS = {		# port: by-id pattern of the CI-V port; top: MHz; att: 11 xx value for on; agc: 16 12 values; watts: power at 00 and 255 (None = show %); swr: 15 12 meter works
+	'IC-705': dict(port='*IC-705*if00', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None, swr=True),
 	'Xiegu x6200': dict(port='*1a86_USB_Dual_Serial*if02', baud=19200, modes=['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'NFM'], top=108,		# its if00 is the radio's Linux console, never CI-V
-		att=0x01, agc={'Off': 0, 'Fast': 1, 'Slow': 2, 'Auto': 3}, watts=(1, 8)),		# power below 1 W reads back as 00 FA
+		att=0x01, agc={'Off': 0, 'Fast': 1, 'Slow': 2, 'Auto': 3}, watts=(1, 8), swr=False),		# power below 1 W reads back as 00 FA; 15 12 always 0 (firmware as of 2026-10)
 }
 
 def find_dev(name='IC-705'):		# the radio's CI-V port, None if not plugged in

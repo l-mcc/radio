@@ -394,6 +394,7 @@ class Shack(QMainWindow):
 		except OSError as e:
 			self.statusBar().showMessage(f'PTT port {self.a.ptt}: {e.strerror}', 10000)
 		self.rig.att_on = r['att']
+		self.has_swr = r['swr']		# the X6200 always reads 0
 		self.agcs = r['agc']
 		quiet(self.agc, self.agc.clear)
 		quiet(self.agc, self.agc.addItems, list(self.agcs))
@@ -403,7 +404,7 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.mode, self.vol, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, self.swr, self.power, self.pttrow))		# nb, nr: the radio's own, on/off
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.mode, self.vol, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow))		# nb, nr: the radio's own, on/off
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
@@ -514,7 +515,8 @@ class Shack(QMainWindow):
 			return self.oops('The radio stopped answering.\n\nUnplugged or turned off?')
 		if time.monotonic() - self.rig.last_set > 0.5:		# stay out of the way of user commands
 			self.rig.send(0x15, 0x02)
-			self.rig.send(0x15, 0x12)		# SWR
+			if self.has_swr:
+				self.rig.send(0x15, 0x12)
 			self.rig.send(0x1C, 0x00)		# TX/RX, so a short transmission (a tuner cycle) shows
 			if self.n % 4 == 0:
 				self.rig.read_fast()
