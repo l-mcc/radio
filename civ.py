@@ -39,8 +39,13 @@ def band_window(khz):		# (range code, lo, hi) for the ham band around khz, or a 
 	return code, max(lo, a), min(hi, b)
 log = logging.getLogger('civ')
 
-def find_dev():		# CI-V is interface 00 of the 705's two USB serial ports; None if not plugged in
-	ids = glob.glob('/dev/serial/by-id/*IC-705*if00')
+RIGS = {		# name: (by-id pattern of the CI-V port, baud, modes, top MHz)
+	'IC-705': ('*IC-705*if00', 115200, MODE_LIST, 470),
+	'Xiegu x6200': ('*1a86_USB_Dual_Serial*if02', 19200, ['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'FM'], 108),		# its if00 is the radio's Linux console, never CI-V
+}
+
+def find_dev(name='IC-705'):		# the radio's CI-V port, None if not plugged in
+	ids = glob.glob('/dev/serial/by-id/' + RIGS[name][0])
 	return ids[0] if ids else None
 
 def bcd(b):		# little-endian BCD
@@ -51,7 +56,9 @@ def tobcd(n, nbytes=5):
 
 class Rig:
 	def __init__(s, dev, baud, addr, emit):
-		s.ser = serial.Serial(dev, baud, timeout=0.2)
+		s.ser = serial.Serial(None, baud, timeout=0.2)
+		s.ser.port, s.ser.dtr, s.ser.rts = dev, False, False		# held low: some radios key TX on RTS
+		s.ser.open()
 		s.addr, s.emit = addr, emit		# emit(kind, value) is called from the reader thread
 		s.wlock = threading.Lock()
 		s.hdr, s.sweep = None, []

@@ -17,7 +17,7 @@ log = logging.getLogger('shack')		# set up in main by utils.setup_logging
 
 HELP = '''
 <h3>Radio</h3>
-<p>Pick IC-705 or RSPdx to open it, none to close it. Only one radio is open at a time; controls that don't apply are greyed out.</p>
+<p>Pick IC-705, RSPdx or Xiegu x6200 to open it, none to close it. Only one radio is open at a time; controls that don't apply are greyed out.</p>
 
 <h3>Frequency</h3>
 <p>Mouse wheel: 1 kHz steps, Ctrl+wheel: 10 kHz. Or type a value in MHz and press Enter. The radio's own changes don't overwrite what you're typing.</p>
@@ -49,7 +49,7 @@ HELP = '''
 <h3>Bookmarks (right)</h3>
 <p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
 
-<h3>IC-705</h3>
+<h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, mode, S-meter and PTT. TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
@@ -235,7 +235,7 @@ class Shack(QMainWindow):
 		self.got.connect(self.on_rig, Qt.ConnectionType.QueuedConnection)		# always via the event loop, never inside a rig callback
 
 		self.radio = QComboBox()
-		self.radio.addItems(['none', 'IC-705', 'RSPdx', 'Xiegu x6200'])		# Xiegu to be done soon (placeholder now)
+		self.radio.addItems(['none', 'IC-705', 'RSPdx', 'Xiegu x6200'])
 		self.radio.activated.connect(lambda i: self.pick(self.radio.itemText(i)))
 		self.freq = QDoubleSpinBox(decimals=6, minimum=0.03, maximum=470, singleStep=0.001, suffix=' MHz', keyboardTracking=False)
 		self.freq.setFont(QFont('monospace', 20))
@@ -332,24 +332,26 @@ class Shack(QMainWindow):
 
 	def pick(self, name):
 		self.shut()
-		if name == 'IC-705':
-			self.open_705()
+		if name in civ.RIGS:
+			self.open_civ(name)
 		elif name == 'RSPdx':
 			self.open_rx()
 		return
 	# pick
 
 	'''-------------------------------------------------------------------
+		open a CI-V radio: the IC-705 or the Xiegu x6200 (which speaks the 705's CI-V)
 	-------------------------------------------------------------------'''
 
-	def open_705(self):
-		dev = civ.find_dev()
+	def open_civ(self, name):
+		dev = civ.find_dev(name)
+		_, baud, modes, top = civ.RIGS[name]
 		if not dev:
-			return self.oops("Can't find the IC-705.\n\nIs it plugged in and turned on?")
+			return self.oops(f"Can't find the {name}.\n\nIs it plugged in and turned on?")
 		try:
-			self.rig = civ.Rig(dev, self.a.baud, self.a.addr, self.got.emit)
+			self.rig = civ.Rig(dev, self.a.baud or baud, self.a.addr, self.got.emit)
 		except serial.SerialException as e:
-			return self.oops(f"Found the IC-705 but couldn't open it.\n\n{e}\n\nIs another program (civ.py, engine.py) using it?")
+			return self.oops(f"Found the {name} but couldn't open it.\n\n{e}\n\nIs another program (civ.py, engine.py) using it?")
 		try:
 			self.srv = civ.serve_ptt(self.rig, self.a.ptt) if self.a.ptt else None
 		except OSError as e:
@@ -357,8 +359,10 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio('IC-705', civ.MODE_LIST, 470, (self.freq, self.mode, self.smeter, self.tx))
+		self.show_radio(name, modes, top, (self.freq, self.mode, self.smeter, self.tx))
 		self.on_rig('ptt_clients', 0)
+		return
+	# open_civ
 
 	'''-------------------------------------------------------------------
 		start the rspdx program, which runs the RSPdx through the sdrplay api
@@ -600,14 +604,14 @@ if __name__ == '__main__':
 			# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 			# sys.argv.append('88.1')
 			ap = argparse.ArgumentParser()
-			ap.add_argument('--baud', type=int, default=115200)
+			ap.add_argument('--baud', type=int, help="override the radio's usual CI-V baud")
 			ap.add_argument('--addr', type=lambda x: int(x, 0), default=0xA4)
 			ap.add_argument('--ptt', type=int, default=4532, help='rigctld-style PTT port for xara, 0 = off')
 			ap.add_argument('--rspdx', default=str(HERE / 'rspdx'), help='the rspdx program (run as rspdx -n)')
 			a = ap.parse_args()
 		else:
 			ap = argparse.ArgumentParser()
-			ap.add_argument('--baud', type=int, default=115200)
+			ap.add_argument('--baud', type=int, help="override the radio's usual CI-V baud")
 			ap.add_argument('--addr', type=lambda x: int(x, 0), default=0xA4)
 			ap.add_argument('--ptt', type=int, default=4532, help='rigctld-style PTT port for xara, 0 = off')
 			ap.add_argument('--rspdx', default=str(HERE / 'rspdx'), help='the rspdx program (run as rspdx -n)')
