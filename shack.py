@@ -8,7 +8,7 @@ import serial
 from PyQt6.QtCore import pyqtSignal, QEvent, QProcess, Qt, QTimer
 from PyQt6.QtGui import QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
-	QProgressBar, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
+	QProgressBar, QPushButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
 
 import civ, styles
 
@@ -50,7 +50,7 @@ HELP = '''
 <p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, mode, volume, S-meter and PTT. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, mode, volume, S-meter, transmit power and PTT. Power is % of the radio's maximum; drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -243,6 +243,17 @@ class Shack(QMainWindow):
 		self.freq.editingFinished.connect(lambda: self.freq.lineEdit().setModified(False))
 		self.mode = QComboBox()
 		self.mode.activated.connect(lambda i: self.rig and self.rig.set('mode', self.mode.itemText(i)))
+		self.power = QWidget(toolTip='Transmit power, % of the radio\'s maximum. Changing it doesn\'t transmit')		# slider + its % readout
+		self.pwr = QSlider(Qt.Orientation.Horizontal, minimum=0, maximum=100, singleStep=1, pageStep=10, tracking=False)		# sends on release, not on every pixel of a drag
+		self.pwr.valueChanged.connect(lambda v: self.rig and self.rig.set('pwr', round(v * 2.55)))
+		self.pwrv = QLabel()
+		self.pwrv.setFixedWidth(self.pwrv.fontMetrics().horizontalAdvance('100 %  '))
+		self.pwr.sliderMoved.connect(lambda v: self.pwrv.setText(f'{v} %'))		# readout follows the drag
+		self.pwr.valueChanged.connect(lambda v: self.pwrv.setText(f'{v} %'))
+		h = QHBoxLayout(self.power)
+		h.setContentsMargins(0, 0, 0, 0)
+		h.addWidget(self.pwr)
+		h.addWidget(self.pwrv)
 		self.vol = QDoubleSpinBox(decimals=2, minimum=0, maximum=1, singleStep=0.02, keyboardTracking=False)
 		self.vol.valueChanged.connect(lambda v: self.rig and self.rig.set('v', v))
 		self.ifr = QSpinBox(minimum=20, maximum=59, suffix=' dB', keyboardTracking=False)		# IF gain reduction
@@ -298,11 +309,11 @@ class Shack(QMainWindow):
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol),
-				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('PTT', self.tx)]):
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('Power', self.power), ('PTT', self.tx)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
 			g.addWidget(self.labels[w], row, 0)
-			g.addWidget(w, row, 1, 1, 2 if w in (self.ovl, self.adc, self.smeter, self.tx) else 1)
+			g.addWidget(w, row, 1, 1, 2 if w in (self.ovl, self.adc, self.smeter, self.power, self.tx) else 1)
 		row += 1
 		g.addLayout(switches, row, 0, 1, 3)
 		self.helpw = None
@@ -362,7 +373,7 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, modes, top, (self.freq, self.mode, self.vol, self.sw['nb'], self.sw['nr'], self.smeter, self.tx))		# nb, nr: the radio's own, on/off
+		self.show_radio(name, modes, top, (self.freq, self.mode, self.vol, self.sw['nb'], self.sw['nr'], self.smeter, self.power, self.tx))		# nb, nr: the radio's own, on/off
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
@@ -412,10 +423,11 @@ class Shack(QMainWindow):
 		self.smeter.setValue(self.smeter.minimum())
 		self.smeter.setFormat('')
 		self.nbr.setText('')
+		self.pwrv.setText('')
 		for b in self.sw.values():
 			b.setChecked(False)
 		self.on_rig('ptt', 0)
-		for w in (self.freq, self.mode, self.vol, self.smeter, self.tx, *self.rsp):
+		for w in (self.freq, self.mode, self.vol, self.smeter, self.power, self.tx, *self.rsp):
 			w.setEnabled(False)
 		return
 	# shut
@@ -459,7 +471,7 @@ class Shack(QMainWindow):
 			self.rig.send(0x15, 0x02)
 			if self.n % 4 == 0:
 				self.rig.read_fast()
-				for k in ('vol', 'nb', 'nr'):		# so the radio's own knob and buttons show up here too
+				for k in ('vol', 'nb', 'nr', 'pwr'):		# so the radio's own knob and buttons show up here too
 					self.rig.send(*civ.CTL[k])
 			self.n += 1
 
@@ -499,6 +511,9 @@ class Shack(QMainWindow):
 			quiet(self.vol, self.vol.setValue, v)
 		elif k == 'vol':		# CI-V AF level 0-255
 			quiet(self.vol, self.vol.setValue, v / 255)
+		elif k == 'pwr' and not self.pwr.isSliderDown():		# CI-V RF power 0-255
+			quiet(self.pwr, self.pwr.setValue, round(v / 2.55))
+			self.pwrv.setText(f'{self.pwr.value()} %')
 		elif k in ('if', 'lna'):
 			w = self.ifr if k == 'if' else self.lna
 			quiet(w, w.setValue, v)

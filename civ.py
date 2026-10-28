@@ -14,7 +14,7 @@ DATA_OK = ('LSB', 'USB', 'NFM', 'AM')		# modes that take the data flag
 NOWIDTH = ('NFM', 'WFM', 'DV')		# fixed filters, 1A 03 gets NG
 SPANS = [2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000]		# ± Hz, center mode
 CTL = {		# key: (cmd, sub); 14 xx is a 0..255 BCD level, 16 xx a single byte
-	'vol': (0x14, 0x01), 'rfg': (0x14, 0x02), 'sql': (0x14, 0x03), 'pbt1': (0x14, 0x07), 'pbt2': (0x14, 0x08), 'pre': (0x16, 0x02), 'agc': (0x16, 0x12),
+	'vol': (0x14, 0x01), 'pwr': (0x14, 0x0A), 'rfg': (0x14, 0x02), 'sql': (0x14, 0x03), 'pbt1': (0x14, 0x07), 'pbt2': (0x14, 0x08), 'pre': (0x16, 0x02), 'agc': (0x16, 0x12),
 	'nb': (0x16, 0x22), 'nr': (0x16, 0x40), 'anf': (0x16, 0x41),
 }
 RCTL = {v: k for k, v in CTL.items()}
