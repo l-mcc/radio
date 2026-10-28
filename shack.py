@@ -50,7 +50,7 @@ HELP = '''
 <p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, mode, volume, AGC, Preamp, ATT, S-meter, transmit power and PTT. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, mode, volume, AGC, Preamp, ATT, S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -313,6 +313,17 @@ class Shack(QMainWindow):
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
 		self.tx = QLabel('RX')
 		self.tx.setFont(QFont('monospace', 16, QFont.Weight.Bold))
+		self.pttb = QPushButton('PTT', checkable=True, toolTip='Transmit: click to key, click again to stop. Drops back to receive by itself after 30 s')
+		self.pttb.setFont(QFont('monospace', 14, QFont.Weight.Bold))
+		self.pttb.setStyleSheet('QPushButton:checked { background-color: #c00000; }')		# transmitting: red, not the usual green
+		self.pttb.clicked.connect(self.key)
+		self.ptt_limit = QTimer(singleShot=True, interval=30000, timeout=lambda: self.key(False))		# safety net
+		self.pttrow = QWidget()		# PTT button + TX/RX indicator
+		h = QHBoxLayout(self.pttrow)
+		h.setContentsMargins(0, 0, 0, 0)
+		h.addWidget(self.pttb)
+		h.addWidget(self.tx)
+		h.addStretch()
 		self.clients = QLabel()
 		self.statusBar().addPermanentWidget(self.clients)
 
@@ -320,11 +331,11 @@ class Shack(QMainWindow):
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol), ('AGC', self.agc),
-				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.tx)]):
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
 			g.addWidget(self.labels[w], row, 0)
-			g.addWidget(w, row, 1, 1, 2 if w in (self.ovl, self.adc, self.smeter, self.power, self.tx) else 1)
+			g.addWidget(w, row, 1, 1, 2 if w in (self.ovl, self.adc, self.smeter, self.power, self.pttrow) else 1)
 		row += 1
 		g.addLayout(switches, row, 0, 1, 3)
 		self.helpw = None
@@ -346,7 +357,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.mode, self.vol, self.agc, self.smeter, self.swr, self.power, self.tx, self.sw['pre'], self.sw['att'], *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.mode, self.vol, self.agc, self.smeter, self.swr, self.power, self.pttrow, self.sw['pre'], self.sw['att'], *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -392,7 +403,7 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.mode, self.vol, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, self.swr, self.power, self.tx))		# nb, nr: the radio's own, on/off
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.mode, self.vol, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, self.swr, self.power, self.pttrow))		# nb, nr: the radio's own, on/off
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
@@ -439,8 +450,9 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def shut(self):
+		self.ptt_limit.stop()
 		if self.rig:
-			if self.rig.tx:
+			if isinstance(self.rig, civ.Rig) and (self.rig.tx or self.pttb.isChecked()):		# the button may be ahead of the radio's report
 				self.rig.ptt(False)
 			self.rig.close()
 			self.rig = None
@@ -510,6 +522,22 @@ class Shack(QMainWindow):
 					self.rig.send(*civ.CTL[k])
 				self.rig.send(0x11)		# attenuator
 			self.n += 1
+
+	'''-------------------------------------------------------------------
+		PTT button: key or unkey; keying starts the 30 s limit
+	-------------------------------------------------------------------'''
+
+	def key(self, on):
+		if not isinstance(self.rig, civ.Rig):
+			return
+		self.rig.set('ptt', on)
+		if on:
+			self.ptt_limit.start()
+		else:
+			self.ptt_limit.stop()
+			self.pttb.setChecked(False)
+		return
+	# key
 
 	'''-------------------------------------------------------------------
 		power slider value (% or tenths of a watt) <-> CI-V level 0-255 and its readout
@@ -606,6 +634,7 @@ class Shack(QMainWindow):
 		elif k == 'ptt':
 			self.tx.setText('TX' if v else 'RX')
 			self.tx.setStyleSheet('color: white; background: red' if v else '')
+			self.pttb.setChecked(bool(v))		# also when xara or the radio's tuner keys it
 		elif k == 'ptt_clients':
 			self.clients.setText(f'PTT port {self.srv.server_address[1]}: {v} connected' if self.srv else 'PTT port off')
 		elif k == 'gone' and self.rig:
