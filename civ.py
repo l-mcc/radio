@@ -7,11 +7,11 @@ from aiohttp import web, WSMsgType, WSCloseCode
 
 HERE = Path(__file__).resolve().parent
 ME = 0xE0
-MODES = {'LSB': 0, 'USB': 1, 'AM': 2, 'CW': 3, 'RTTY': 4, 'FM': 5, 'WFM': 6, 'CW-R': 7, 'RTTY-R': 8, 'DV': 0x17}
+MODES = {'LSB': 0, 'USB': 1, 'AM': 2, 'CW': 3, 'RTTY': 4, 'NFM': 5, 'WFM': 6, 'CW-R': 7, 'RTTY-R': 8, 'DV': 0x17}
 RMODES = {v: k for k, v in MODES.items()}
-MODE_LIST = ['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'RTTY', 'RTTY-R', 'FM', 'FM-D', 'WFM', 'DV']
-DATA_OK = ('LSB', 'USB', 'FM', 'AM')		# modes that take the data flag
-NOWIDTH = ('FM', 'WFM', 'DV')		# fixed filters, 1A 03 gets NG
+MODE_LIST = ['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'RTTY', 'RTTY-R', 'NFM', 'NFM-D', 'WFM', 'DV']
+DATA_OK = ('LSB', 'USB', 'NFM', 'AM')		# modes that take the data flag
+NOWIDTH = ('NFM', 'WFM', 'DV')		# fixed filters, 1A 03 gets NG
 SPANS = [2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000]		# ± Hz, center mode
 CTL = {		# key: (cmd, sub); 14 xx is a 0..255 BCD level, 16 xx a single byte
 	'vol': (0x14, 0x01), 'rfg': (0x14, 0x02), 'sql': (0x14, 0x03), 'pbt1': (0x14, 0x07), 'pbt2': (0x14, 0x08), 'pre': (0x16, 0x02), 'agc': (0x16, 0x12),
@@ -41,7 +41,7 @@ log = logging.getLogger('civ')
 
 RIGS = {		# name: (by-id pattern of the CI-V port, baud, modes, top MHz)
 	'IC-705': ('*IC-705*if00', 115200, MODE_LIST, 470),
-	'Xiegu x6200': ('*1a86_USB_Dual_Serial*if02', 19200, ['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'FM'], 108),		# its if00 is the radio's Linux console, never CI-V
+	'Xiegu x6200': ('*1a86_USB_Dual_Serial*if02', 19200, ['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'NFM'], 108),		# its if00 is the radio's Linux console, never CI-V
 }
 
 def find_dev(name='IC-705'):		# the radio's CI-V port, None if not plugged in
