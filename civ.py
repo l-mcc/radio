@@ -39,13 +39,14 @@ def band_window(khz):		# (range code, lo, hi) for the ham band around khz, or a 
 	return code, max(lo, a), min(hi, b)
 log = logging.getLogger('civ')
 
-RIGS = {		# name: (by-id pattern of the CI-V port, baud, modes, top MHz)
-	'IC-705': ('*IC-705*if00', 115200, MODE_LIST, 470),
-	'Xiegu x6200': ('*1a86_USB_Dual_Serial*if02', 19200, ['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'NFM'], 108),		# its if00 is the radio's Linux console, never CI-V
+RIGS = {		# port: by-id pattern of the CI-V port; top: MHz; att: 11 xx value for on; agc: 16 12 values; watts: power at 00 and 255 (None = show %)
+	'IC-705': dict(port='*IC-705*if00', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None),
+	'Xiegu x6200': dict(port='*1a86_USB_Dual_Serial*if02', baud=19200, modes=['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'NFM'], top=108,		# its if00 is the radio's Linux console, never CI-V
+		att=0x01, agc={'Off': 0, 'Fast': 1, 'Slow': 2, 'Auto': 3}, watts=(1, 8)),		# power below 1 W reads back as 00 FA
 }
 
 def find_dev(name='IC-705'):		# the radio's CI-V port, None if not plugged in
-	ids = glob.glob('/dev/serial/by-id/' + RIGS[name][0])
+	ids = glob.glob('/dev/serial/by-id/' + RIGS[name]['port'])
 	return ids[0] if ids else None
 
 def bcd(b):		# little-endian BCD
@@ -66,6 +67,7 @@ class Rig:
 		s.last_set = 0.0		# NG only reported right after a user command; polls may NG quietly
 		s.mhz, s.band, s.win = 0.0, False, None		# band view: fixed scope edges that follow the dial
 		s.tx = 0		# as last reported by 1C 00
+		s.att_on = 0x20		# 11 xx for attenuator on: 705 20 (dB), X6200 01 (RIGS att)
 		s.alive, s.heard = True, time.monotonic()		# heard: last frame from the radio
 		threading.Thread(target=s.reader, daemon=True).start()
 
@@ -132,7 +134,8 @@ class Rig:
 			i = int(d[1:].hex())
 			s.emit('width', (i + 1) * 200 if s.base == 'AM' else (i + 1) * 50 if i < 10 else (i - 4) * 100)
 		elif cmd in (0x14, 0x16) and len(d) >= 2 and (cmd, d[0]) in RCTL:
-			s.emit(RCTL[cmd, d[0]], int(d[1:3].hex()) if cmd == 0x14 else d[1])
+			h = d[1:3].hex()
+			s.emit(RCTL[cmd, d[0]], d[1] if cmd == 0x16 else int(h) if h.isdigit() else None)		# None: not BCD (the X6200's power below 1 W)
 		elif cmd == 0x1C and len(d) == 2 and d[0] == 0x00:
 			s.tx = d[1]
 			s.emit('ptt', d[1])
@@ -247,7 +250,7 @@ class Rig:
 		elif k == 'span':
 			s.send(0x27, 0x15, 0x00, *tobcd(int(v)))
 		elif k == 'att':
-			s.send(0x11, 0x20 if int(v) else 0x00)
+			s.send(0x11, s.att_on if int(v) else 0x00)
 			s.send(0x11)
 		elif k == 'v':		# shack's volume 0-1 -> AF level 0-255
 			s.set('vol', round(float(v) * 255))

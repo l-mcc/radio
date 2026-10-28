@@ -50,7 +50,7 @@ HELP = '''
 <p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, mode, volume, S-meter, transmit power and PTT. Power is % of the radio's maximum; drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, mode, volume, AGC, Preamp, ATT, S-meter, transmit power and PTT. Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -245,11 +245,15 @@ class Shack(QMainWindow):
 		self.mode.activated.connect(lambda i: self.rig and self.rig.set('mode', self.mode.itemText(i)))
 		self.power = QWidget(toolTip='Transmit power, % of the radio\'s maximum. Changing it doesn\'t transmit')		# slider + its % readout
 		self.pwr = QSlider(Qt.Orientation.Horizontal, minimum=0, maximum=100, singleStep=1, pageStep=10, tracking=False)		# sends on release, not on every pixel of a drag
-		self.pwr.valueChanged.connect(lambda v: self.rig and self.rig.set('pwr', round(v * 2.55)))
+		self.pwr.valueChanged.connect(lambda v: self.rig and self.rig.set('pwr', self.pwr_raw(v)))
+		self.pscale = None		# (W at 0, W at 255) for radios that show watts, None = %
 		self.pwrv = QLabel()
-		self.pwrv.setFixedWidth(self.pwrv.fontMetrics().horizontalAdvance('100 %  '))
-		self.pwr.sliderMoved.connect(lambda v: self.pwrv.setText(f'{v} %'))		# readout follows the drag
-		self.pwr.valueChanged.connect(lambda v: self.pwrv.setText(f'{v} %'))
+		self.pwrv.setFixedWidth(self.pwrv.fontMetrics().horizontalAdvance('10.0 W  '))
+		self.pwr.sliderMoved.connect(lambda v: self.pwrv.setText(self.pwr_text(v)))		# readout follows the drag
+		self.pwr.valueChanged.connect(lambda v: self.pwrv.setText(self.pwr_text(v)))
+		self.agc = QComboBox(toolTip='The radio\'s AGC')
+		self.agc.activated.connect(lambda i: self.rig and self.rig.set('agc', self.agcs[self.agc.itemText(i)]))
+		self.agcs = {}		# label: 16 12 value, per radio (civ.RIGS)
 		h = QHBoxLayout(self.power)
 		h.setContentsMargins(0, 0, 0, 0)
 		h.addWidget(self.pwr)
@@ -280,6 +284,11 @@ class Shack(QMainWindow):
 			if k == 'nb':		# its level and rate sit next to it
 				switches.addWidget(self.nbdb)
 				switches.addWidget(self.nbr)
+		self.sw['pre'] = QPushButton('Preamp', checkable=True)		# CI-V radios
+		self.sw['att'] = QPushButton('ATT', checkable=True)
+		for k in ('pre', 'att'):
+			self.sw[k].clicked.connect(lambda on, k=k: self.rig and self.rig.set(k, on))
+			switches.insertWidget(0 if k == 'pre' else 1, self.sw[k])
 		self.sw['nr'].setToolTip('RNNoise: removes the noise floor under voice (SSB, AM). Turn off for very weak signals, music and CW; Digital out is unaffected')
 		self.save = QPushButton('Save', toolTip='Store these settings for this frequency and mode, and start here next time (like s in the TUI)')
 		self.save.clicked.connect(lambda: self.rig and self.rig.set('save', 1))
@@ -299,7 +308,7 @@ class Shack(QMainWindow):
 		self.bms.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.bms.customContextMenuRequested.connect(self.bm_menu)
 		self.bmlist = []
-		self.rsp = (self.ifr, self.lna, self.ant, self.ovl, self.bw, *self.sw.values(), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
+		self.rsp = (self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.tx = QLabel('RX')
 		self.tx.setFont(QFont('monospace', 16, QFont.Weight.Bold))
@@ -309,7 +318,7 @@ class Shack(QMainWindow):
 		self.labels = {}		# control: its row label
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
-		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol),
+		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('Mode', self.mode), ('Volume', self.vol), ('AGC', self.agc),
 				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('Power', self.power), ('PTT', self.tx)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
@@ -336,7 +345,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.mode, self.vol, self.smeter, self.power, self.tx, *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.mode, self.vol, self.agc, self.smeter, self.power, self.tx, self.sw['pre'], self.sw['att'], *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -361,21 +370,28 @@ class Shack(QMainWindow):
 
 	def open_civ(self, name):
 		dev = civ.find_dev(name)
-		_, baud, modes, top = civ.RIGS[name]
+		r = civ.RIGS[name]
 		if not dev:
 			return self.oops(f"Can't find the {name}.\n\nIs it plugged in and turned on?")
 		try:
-			self.rig = civ.Rig(dev, self.a.baud or baud, self.a.addr, self.got.emit)
+			self.rig = civ.Rig(dev, self.a.baud or r['baud'], self.a.addr, self.got.emit)
 		except serial.SerialException as e:
 			return self.oops(f"Found the {name} but couldn't open it.\n\n{e}\n\nIs another program (civ.py, engine.py) using it?")
 		try:
 			self.srv = civ.serve_ptt(self.rig, self.a.ptt) if self.a.ptt else None
 		except OSError as e:
 			self.statusBar().showMessage(f'PTT port {self.a.ptt}: {e.strerror}', 10000)
+		self.rig.att_on = r['att']
+		self.agcs = r['agc']
+		quiet(self.agc, self.agc.clear)
+		quiet(self.agc, self.agc.addItems, list(self.agcs))
+		self.pscale = r['watts']
+		lo, hi = (0, 100) if not self.pscale else (self.pscale[0] * 10, self.pscale[1] * 10)		# % or tenths of a watt
+		quiet(self.pwr, self.pwr.setRange, lo, hi)
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, modes, top, (self.freq, self.mode, self.vol, self.sw['nb'], self.sw['nr'], self.smeter, self.power, self.tx))		# nb, nr: the radio's own, on/off
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.mode, self.vol, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, self.power, self.tx))		# nb, nr: the radio's own, on/off
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
@@ -485,9 +501,23 @@ class Shack(QMainWindow):
 			self.rig.send(0x15, 0x02)
 			if self.n % 4 == 0:
 				self.rig.read_fast()
-				for k in ('vol', 'nb', 'nr', 'pwr'):		# so the radio's own knob and buttons show up here too
+				for k in ('vol', 'nb', 'nr', 'pwr', 'pre', 'agc'):		# so the radio's own knob and buttons show up here too
 					self.rig.send(*civ.CTL[k])
+				self.rig.send(0x11)		# attenuator
 			self.n += 1
+
+	'''-------------------------------------------------------------------
+		power slider value (% or tenths of a watt) <-> CI-V level 0-255 and its readout
+	-------------------------------------------------------------------'''
+
+	def pwr_raw(self, v):
+		if not self.pscale:
+			return round(v * 2.55)
+		lo, hi = self.pscale
+		return max(0, min(255, round((v / 10 - lo) / (hi - lo) * 255)))
+
+	def pwr_text(self, v):
+		return f'{v / 10:.1f} W' if self.pscale else f'{v} %'
 
 	'''-------------------------------------------------------------------
 		a row label follows its control's enabled state
@@ -503,6 +533,8 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def on_rig(self, k, v):
+		if v is None and k != 'pwr':		# a level the radio sent as junk
+			return
 		if k == 'mhz' and not self.freq.lineEdit().isModified():		# don't overwrite typing
 			self.freq.blockSignals(True)
 			self.freq.setValue(v)
@@ -525,9 +557,15 @@ class Shack(QMainWindow):
 			quiet(self.vol, self.vol.setValue, v)
 		elif k == 'vol':		# CI-V AF level 0-255
 			quiet(self.vol, self.vol.setValue, v / 255)
-		elif k == 'pwr' and not self.pwr.isSliderDown():		# CI-V RF power 0-255
-			quiet(self.pwr, self.pwr.setValue, round(v / 2.55))
-			self.pwrv.setText(f'{self.pwr.value()} %')
+		elif k == 'pwr' and not self.pwr.isSliderDown():		# CI-V RF power 0-255, None when the radio sends junk
+			if v is None:
+				return self.pwrv.setText('?')
+			quiet(self.pwr, self.pwr.setValue, round(v / 2.55) if not self.pscale else round((self.pscale[0] + v / 255 * (self.pscale[1] - self.pscale[0])) * 10))
+			self.pwrv.setText(self.pwr_text(self.pwr.value()))
+		elif k == 'agc':
+			name = next((n for n, x in self.agcs.items() if x == v), None)
+			if name:
+				quiet(self.agc, self.agc.setCurrentText, name)
 		elif k in ('if', 'lna'):
 			w = self.ifr if k == 'if' else self.lna
 			quiet(w, w.setValue, v)
