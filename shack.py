@@ -17,7 +17,7 @@ log = logging.getLogger('shack')		# set up in main by utils.setup_logging
 
 HELP = '''
 <h3>Radio</h3>
-<p>Pick IC-705, RSPdx or Xiegu x6200 to open it, none to close it. Only one radio is open at a time; controls that don't apply are greyed out, the ones that do are bold.</p>
+<p>Pick IC-705, RSPdx or Xiegu x6200 to open it, none to close it. Only one radio is open at a time; only its own controls are shown. A greyed-out one doesn't apply in the current mode (Bandwidth outside SSB, for example).</p>
 
 <h3>Frequency</h3>
 <p>Mouse wheel: 1 kHz steps, Ctrl+wheel: 10 kHz. Or type a value in MHz and press Enter. The radio's own changes don't overwrite what you're typing.</p>
@@ -284,6 +284,7 @@ class Shack(QMainWindow):
 		self.save = QPushButton('Save', toolTip='Store these settings for this frequency and mode, and start here next time (like s in the TUI)')
 		self.save.clicked.connect(lambda: self.rig and self.rig.set('save', 1))
 		switches.addWidget(self.save)
+		switches.addStretch()		# buttons keep their size when others are hidden
 		self.adc = QProgressBar(minimum=-60, maximum=0, value=-60, format='', toolTip='Broadband level into the RSPdx ADC; red above -6 dBFS: back off the gain')
 		self.bms = QTableWidget(0, 4, toolTip='Double-click: go there.  Right-click: rename or delete.  Save adds the current station.')
 		self.bms.setHorizontalHeaderLabels(['Name', 'MHz', 'Mode', 'Hits'])
@@ -298,7 +299,7 @@ class Shack(QMainWindow):
 		self.bms.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.bms.customContextMenuRequested.connect(self.bm_menu)
 		self.bmlist = []
-		self.rsp = (self.ifr, self.lna, self.ant, self.ovl, self.bw, *self.sw.values(), self.nbdb, self.save, self.adc, self.bms)		# RSPdx-only controls
+		self.rsp = (self.ifr, self.lna, self.ant, self.ovl, self.bw, *self.sw.values(), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.tx = QLabel('RX')
 		self.tx.setFont(QFont('monospace', 16, QFont.Weight.Bold))
@@ -335,6 +336,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
+		self.parts = (self.freq, self.mode, self.vol, self.smeter, self.power, self.tx, *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -400,10 +402,23 @@ class Shack(QMainWindow):
 		self.mode.addItems(modes)
 		self.freq.setMaximum(top)
 		for w in live:
-			w.setEnabled(True)
+			w.setEnabled(True)		# a mode may grey some out again (bandwidth outside SSB...)
+		self.only(live)
 
 	'''-------------------------------------------------------------------
-		close the radio, unkeyed, and grey out its controls
+		show just the controls this radio has, with their row labels
+	-------------------------------------------------------------------'''
+
+	def only(self, live):
+		for w in self.parts:
+			w.setVisible(w in live)
+			if w in self.labels:
+				self.labels[w].setVisible(w in live)
+		return
+	# only
+
+	'''-------------------------------------------------------------------
+		close the radio, unkeyed, and hide its controls
 	-------------------------------------------------------------------'''
 
 	def shut(self):
@@ -427,8 +442,7 @@ class Shack(QMainWindow):
 		for b in self.sw.values():
 			b.setChecked(False)
 		self.on_rig('ptt', 0)
-		for w in (self.freq, self.mode, self.vol, self.smeter, self.power, self.tx, *self.rsp):
-			w.setEnabled(False)
+		self.only(())
 		return
 	# shut
 
