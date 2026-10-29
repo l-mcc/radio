@@ -42,7 +42,7 @@ HELP = '''
 <tr><td><b>Digital out</b></td><td>48 kHz 16-bit mono audio as UDP to 127.0.0.1:7355, for decode.py, xara-monitor, direwolf</td></tr>
 <tr><td><b>Waterfall</b></td><td>web page at http://localhost:8700/ (opens a browser if none connects)</td></tr>
 <tr><td><b>Noise blanker</b></td><td>SSB and AM. The dB box is the trigger level: lower catches more, and changing it turns the blanker on. /s is pulses blanked per second: about 1/s for the electric fence; dozens on plain noise means the level is too low</td></tr>
-<tr><td><b>Noise reduction</b></td><td>RNNoise, a neural network trained on speech: takes the hiss and noise floor out from under voice. Like SDRconnect's NR it won't dig very weak signals out of heavy noise, and it can chop up music and CW, so turn it off for those. Digital out (the decoders) gets the audio before it</td></tr>
+<tr><td><b>Noise reduction</b></td><td>RNNoise, a neural network trained on speech: takes the hiss and noise floor out from under voice. Like SDRconnect's NR it won't dig very weak signals out of heavy noise, and it can chop up music and CW, so turn it off for those (it's off in WBFM). Digital out (the decoders) gets the audio before it</td></tr>
 <tr><td><b>Save</b></td><td>stores frequency, mode and settings as a bookmark, and starts here next time</td></tr>
 </table>
 
@@ -578,6 +578,7 @@ class Shack(QMainWindow):
 				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rspdx's call, not a command
 		elif k == 'mode' and self.mode.findText(v) >= 0:
 			self.mode.setCurrentText(v)
+			self.sw['nr'].setEnabled(v != 'WBFM')		# speech NR chops up broadcast music; rspdx skips it there too
 			if isinstance(self.rig, Rspdx):		# as in the TUI: bandwidth presets are SSB only, the blanker isn't in WBFM
 				self.bw.setEnabled(v in ('LSB', 'USB'))
 				self.sw['nb'].setEnabled(v != 'WBFM')

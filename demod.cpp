@@ -256,7 +256,7 @@ public:
 			dc += 0.001f * (sample - dc);
 			sample = sample - dc;
 		}
-		finish(audio, vol, false);
+		finish(audio, vol, false, false);		// no RNNoise on broadcast FM: it chops up music
 	}
 private:
 	static constexpr unsigned int decim = 4;
@@ -316,12 +316,13 @@ class Denoise {		// RNNoise (speech-trained noise suppression) only runs at 48 k
 
 Demod::~Demod() = default;		// here, where Denoise is complete
 
-void Demod::finish(std::vector<float> &audio, float vol, bool limit) {
+void Demod::finish(std::vector<float> &audio, float vol, bool limit, bool denoise) {
 	if (tap) {
 		clean.resize(audio.size());
 		for (size_t i = 0; i < audio.size(); ++i) clean[i] = std::clamp(audio[i], -0.9f, 0.9f);
 	}
-	if (nr != bool(den)) den = nr ? std::make_unique<Denoise>(audio_rate) : nullptr;
+	bool on = nr && denoise;
+	if (on != bool(den)) den = on ? std::make_unique<Denoise>(audio_rate) : nullptr;
 	if (den) den->run(audio);
 	for (float &s : audio) s = limit ? std::clamp(s * vol, -0.9f, 0.9f) : s * vol;
 }

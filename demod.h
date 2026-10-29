@@ -29,7 +29,7 @@ public:
 	uint64_t nb_pulses = 0;		// pulses blanked; the caller reads and resets
 	bool nr = false;		// RNNoise on the audio after the decoder tap; rspdx follows nr_on
 protected:
-	void finish(std::vector<float> &audio, float vol, bool limit = true);		// audio holds the pre-volume signal; copies it to clean if tapped, denoises if nr, then applies volume
+	void finish(std::vector<float> &audio, float vol, bool limit = true, bool denoise = true);		// audio holds the pre-volume signal; copies it to clean if tapped, denoises if nr (and the mode allows it), then applies volume
 	std::unique_ptr<Denoise> den;		// made when nr goes on, dropped when it goes off
 };
 
