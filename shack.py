@@ -50,7 +50,7 @@ HELP = '''
 <p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, volume, RF gain, AGC, Preamp, ATT, S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -466,6 +466,16 @@ class Shack(QMainWindow):
 		self.freq.changed.connect(lambda v: self.rig and self.rig.set('mhz', v))
 		self.mode = QComboBox()
 		self.mode.activated.connect(lambda i: self.rig and self.rig.set('mode', self.mode.itemText(i)))
+		self.filrow = QWidget(toolTip='The radio\'s three filter presets for this mode, widest to narrowest as the radio ships; the width is what the radio reports for the one in use')
+		self.fil = QComboBox()
+		self.fil.addItems(['FIL1', 'FIL2', 'FIL3'])
+		self.fil.activated.connect(lambda i: self.rig and self.rig.set('fil', i + 1))
+		self.filw = QLabel()
+		h = QHBoxLayout(self.filrow)
+		h.setContentsMargins(0, 0, 0, 0)
+		h.addWidget(self.fil)
+		h.addWidget(self.filw)
+		h.addStretch()
 		self.power = QWidget(toolTip='Transmit power, % of the radio\'s maximum. Changing it doesn\'t transmit')		# slider + its % readout
 		self.pwr = QSlider(Qt.Orientation.Horizontal, minimum=0, maximum=100, singleStep=1, pageStep=10, tracking=False)		# sends on release, not on every pixel of a drag
 		self.pwr.valueChanged.connect(lambda v: self.rig and self.rig.set('pwr', self.pwr_raw(v)))
@@ -564,12 +574,12 @@ class Shack(QMainWindow):
 		self.labels = {}		# control: its row label
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
-		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc),
+		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc),
 				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
 			g.addWidget(self.labels[w], row, 0)
-			g.addWidget(w, row, 1, 1, 2 if w in (self.freq, self.vforow, self.ovl, self.adc, self.smeter, self.power, self.pttrow) else 1)
+			g.addWidget(w, row, 1, 1, 2 if w in (self.freq, self.vforow, self.filrow, self.ovl, self.adc, self.smeter, self.power, self.pttrow) else 1)
 		row += 1
 		g.addLayout(switches, row, 0, 1, 3)
 		self.helpw = None
@@ -591,7 +601,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.smeter, self.swr, self.power, self.pttrow, self.sw['pre'], self.sw['att'], *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.smeter, self.swr, self.power, self.pttrow, self.sw['pre'], self.sw['att'], *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -638,7 +648,7 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow))		# nb, nr: the radio's own, on/off
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow))		# nb, nr: the radio's own, on/off
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
@@ -705,6 +715,8 @@ class Shack(QMainWindow):
 		self.pwrv.setText('')
 		self.swr.setText('')
 		self.swr.setStyleSheet('')
+		self.filw.setText('')
+		quiet(self.fil, self.fil.setCurrentIndex, -1)
 		for b in (*self.sw.values(), *self.vfo.values()):
 			b.setChecked(False)
 		self.on_rig('ptt', 0)
@@ -810,6 +822,8 @@ class Shack(QMainWindow):
 				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rspdx's call, not a command
 		elif k == 'mode' and self.mode.findText(v) >= 0:
 			self.mode.setCurrentText(v)
+			if v.removesuffix('-D') in civ.NOWIDTH:		# FM: the radio doesn't report a width
+				self.filw.setText('')
 			self.sw['nr'].setEnabled(v != 'WBFM')		# speech NR chops up broadcast music; rspdx skips it there too
 			if isinstance(self.rig, Rspdx):		# as in the TUI: bandwidth presets are SSB only, the blanker isn't in WBFM
 				self.bw.setEnabled(v in ('LSB', 'USB'))
@@ -817,6 +831,10 @@ class Shack(QMainWindow):
 				self.nbdb.setEnabled(v != 'WBFM')
 		elif k == 'bw':
 			self.bw.setCurrentIndex(v)
+		elif k == 'fil' and 1 <= v <= 3:		# CI-V filter preset, from the 04 reply
+			quiet(self.fil, self.fil.setCurrentIndex, v - 1)
+		elif k == 'width':		# CI-V passband of the filter in use, Hz; 0 = the radio sent something unreadable
+			self.filw.setText('?' if not v else f'{v} Hz' if v < 1000 else f'{v / 1000:g} kHz')
 		elif k in self.sw:
 			self.sw[k].setChecked(bool(v))
 			if k == 'nb' and v and isinstance(self.rig, Rspdx):		# rspdx's nb carries the level when on, 0 when off

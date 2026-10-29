@@ -70,7 +70,8 @@ class Rig:
 		s.addr, s.emit = addr, emit		# emit(kind, value) is called from the reader thread
 		s.wlock = threading.Lock()
 		s.hdr, s.sweep = None, []
-		s.base, s.data = '', 0		# mode byte and data flag arrive separately
+		s.base, s.data, s.fil = '', 0, 0		# mode byte (with its filter 1-3) and data flag arrive separately
+		s.oddw = None		# last non-BCD 1A 03 reply, logged once
 		s.last_set = 0.0		# NG only reported right after a user command; polls may NG quietly
 		s.mhz, s.band, s.win = 0.0, False, None		# band view: fixed scope edges that follow the dial
 		s.tx = 0		# as last reported by 1C 00
@@ -133,12 +134,19 @@ class Rig:
 			s.base = RMODES.get(d[0], f'{d[0]:02X}')
 			s.emit_mode()
 			if len(d) > 1:
+				s.fil = d[1]
 				s.emit('fil', d[1])
 		elif cmd == 0x1A and len(d) >= 2 and d[0] == 0x06:
 			s.data = d[1]
 			s.emit_mode()
 		elif cmd == 0x1A and len(d) == 2 and d[0] == 0x03:
-			i = int(d[1:].hex())
+			h = d[1:].hex()
+			if not h.isdigit():		# the X6200 sometimes answers with a non-BCD byte (2c seen): log it once per value, show the width as unknown
+				if h != s.oddw:
+					log.info(f'1A 03 width not BCD: {h} in {s.base} FIL{s.fil}')
+					s.oddw = h
+				return s.emit('width', 0)
+			i = int(h)
 			s.emit('width', (i + 1) * 200 if s.base == 'AM' else (i + 1) * 50 if i < 10 else (i - 4) * 100)
 		elif cmd in (0x14, 0x16) and len(d) >= 2 and (cmd, d[0]) in RCTL:
 			h = d[1:3].hex()
