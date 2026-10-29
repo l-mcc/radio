@@ -50,7 +50,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -771,7 +771,8 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow))		# nb, nr: the radio's own, on/off
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.save, self.bms))		# nb, nr: the radio's own, on/off
+		self.show_bms()
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
@@ -1079,7 +1080,7 @@ class Shack(QMainWindow):
 		self.rig.set('mhz', b['hz'] / 1e6)
 		s = b['settings'].get(self.radio.currentText())
 		if s:
-			self.rig.apply(b['mode'], s)
+			self.apply(b['mode'], s)
 		self.show_bms()
 		return
 	# bm_pick
@@ -1091,13 +1092,41 @@ class Shack(QMainWindow):
 	def bm_save(self):
 		if not self.rig:
 			return
-		radio, hz, mode, s = self.radio.currentText(), self.freq.hz, self.mode.currentText(), self.rig.settings()
+		radio, hz, mode, s = self.radio.currentText(), self.freq.hz, self.mode.currentText(), self.settings()
 		self.bm.save(radio, hz, mode, s)
-		self.bm.set_last(radio, hz, mode, s)
+		if isinstance(self.rig, Rspdx):		# a CI-V radio remembers where it was by itself
+			self.bm.set_last(radio, hz, mode, s)
 		self.show_bms()
 		self.statusBar().showMessage(f'Saved {hz / 1e6:.6f} {mode}', 5000)
 		return
 	# bm_save
+
+	'''-------------------------------------------------------------------
+		what a bookmark keeps for the open radio, and putting it back. CI-V: read off the controls (they follow the radio);
+		never TX power, so a bookmark can't change what you transmit with
+	-------------------------------------------------------------------'''
+
+	def settings(self):
+		if isinstance(self.rig, Rspdx):
+			return self.rig.settings()
+		s = {'v': self.vol.value(), 'rfg': self.rfg.value(), **{k: int(self.sw[k].isChecked()) for k in ('pre', 'att', 'nb', 'nr')}}
+		if self.fil.currentIndex() >= 0:
+			s['fil'] = self.fil.currentIndex() + 1
+		if self.agc.currentText() in self.agcs:
+			s['agc'] = self.agcs[self.agc.currentText()]
+		return s
+	# settings
+
+	def apply(self, mode, s):
+		if isinstance(self.rig, Rspdx):
+			return self.rig.apply(mode, s)
+		for k, v in s.items():
+			if k == 'rfg':
+				self.rig.set('rfg', round(v * 2.55))
+			elif k in ('v', 'fil', 'pre', 'att', 'nb', 'nr', 'agc'):
+				self.rig.set(k, v)
+		return
+	# apply
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
