@@ -37,7 +37,7 @@ def band_window(khz):		# (range code, lo, hi) for the ham band around khz, or a 
 		hi = lo + MAXW
 	code, (a, b) = rng
 	return code, max(lo, a), min(hi, b)
-log = logging.getLogger('civ')
+log = logging.getLogger('shack.civ')		# child of shack's logger: lands in shack.log; on its own, goes to the root logger
 SWR = [(0, 1.0), (48, 1.5), (80, 2.0), (120, 3.0)]		# 15 12 meter -> SWR, Icom's table (the X6200 assumed the same); +1 per 40 above
 
 def swr(v):
