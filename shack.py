@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, logging, sys, time
+import argparse, json, logging, sqlite3, sys, time
 from pathlib import Path
 
 import serial
@@ -43,11 +43,11 @@ HELP = '''
 <tr><td><b>Waterfall</b></td><td>web page at http://localhost:8700/ (opens a browser if none connects)</td></tr>
 <tr><td><b>Noise blanker</b></td><td>SSB and AM. The dB box is the trigger level: lower catches more, and changing it turns the blanker on. /s is pulses blanked per second: about 1/s for the electric fence; dozens on plain noise means the level is too low</td></tr>
 <tr><td><b>Noise reduction</b></td><td>RNNoise, a neural network trained on speech: takes the hiss and noise floor out from under voice. Like SDRconnect's NR it won't dig very weak signals out of heavy noise, and it can chop up music and CW, so turn it off for those (it's off in WBFM). Digital out (the decoders) gets the audio before it</td></tr>
-<tr><td><b>Save</b></td><td>stores frequency, mode and settings as a bookmark, and starts here next time</td></tr>
+<tr><td><b>Save</b></td><td>bookmarks frequency, mode and settings (or updates the bookmark already there)</td></tr>
 </table>
 
 <h3>Bookmarks (right)</h3>
-<p>Double-click: tune there with its settings. Right-click: rename (empty = band label) or delete. Most used are at the top.</p>
+<p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
@@ -307,6 +307,112 @@ class Freq(QWidget):		# frequency readout that works like the waterfall page's: 
 
 ==================================================================================================================================================='''
 
+class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a row keeps settings per radio, {radio: {key: value}}
+	BANDS = ((1.8, 2.0, '160m'), (3.5, 4.0, '80m'), (5.33, 5.41, '60m'), (7.0, 7.3, '40m'), (10.1, 10.15, '30m'), (14.0, 14.35, '20m'),
+		(18.068, 18.168, '17m'), (21.0, 21.45, '15m'), (24.89, 24.99, '12m'), (28.0, 29.7, '10m'), (50.0, 54.0, '6m'),
+		(0.53, 1.71, 'MW'), (2.3, 2.495, '120m SW'), (3.2, 3.4, '90m SW'), (4.75, 5.06, '60m SW'), (5.9, 6.2, '49m SW'), (7.2, 7.6, '41m SW'),
+		(9.4, 9.9, '31m SW'), (11.6, 12.1, '25m SW'), (13.57, 13.87, '22m SW'), (15.1, 15.8, '19m SW'), (17.48, 17.9, '16m SW'),
+		(18.9, 19.02, '15m SW'), (21.45, 21.85, '13m SW'), (25.67, 26.1, '11m SW'), (26.965, 27.405, 'CB'), (118.0, 137.0, 'Air'), (87.5, 108.0, 'FM'))		# MHz, first match wins; as control.cpp has them
+
+	'''-------------------------------------------------------------------
+		opens (or makes) the database; a new one gets rspdx's settings.db rows copied in
+	-------------------------------------------------------------------'''
+
+	def __init__(self, path, old):
+		new = not Path(path).exists()
+		self.db = sqlite3.connect(path)
+		self.db.execute("CREATE TABLE IF NOT EXISTS bookmarks (hz INTEGER NOT NULL, mode TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', hits INTEGER NOT NULL DEFAULT 1,"
+			" settings TEXT NOT NULL DEFAULT '{}', updated TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (hz, mode))")
+		self.db.execute("CREATE TABLE IF NOT EXISTS last (radio TEXT PRIMARY KEY, hz INTEGER NOT NULL, mode TEXT NOT NULL, settings TEXT NOT NULL DEFAULT '{}')")		# where each radio was left
+		if new and Path(old).exists():
+			self.copy_rspdx(old)
+		self.db.commit()
+		return
+	# __init__
+
+	'''-------------------------------------------------------------------
+		one-time copy of rspdx's settings.db (its -1 = never saved, left out)
+	-------------------------------------------------------------------'''
+
+	def copy_rspdx(self, old):
+		src = sqlite3.connect(old)
+		cols = ('v', 'if', 'lna', 'ant', 'notch', 'dab', 'hdr', 'bw', 'nb', 'nr')
+		for hz, mode, name, hits, *vals in src.execute('SELECT frequency_hz, mode, name, hits, volume, if_reduction, lna, antenna, rf_notch, dab_notch, hdr, bw, nb, nr FROM settings'):
+			s = {k: v for k, v in zip(cols, vals) if not (k in ('bw', 'nb', 'nr') and v < 0)}
+			self.db.execute('INSERT OR IGNORE INTO bookmarks (hz, mode, name, hits, settings) VALUES (?, ?, ?, ?, ?)', (hz, mode.upper(), name, hits, json.dumps({'RSPdx': s})))
+		row = src.execute('SELECT frequency_hz, mode FROM last_frequency ORDER BY saved_at DESC LIMIT 1').fetchone()
+		if row:
+			b = self.find(row[0], row[1].upper())
+			self.set_last('RSPdx', row[0], row[1].upper(), b['settings'].get('RSPdx', {}) if b else {})
+		src.close()
+		log.info(f'bookmarks: copied {self.db.execute("SELECT count(*) FROM bookmarks").fetchone()[0]} from {old}')
+		return
+	# copy_rspdx
+
+	'''-------------------------------------------------------------------
+		all bookmarks, most picked first; an empty name shows its band label
+	-------------------------------------------------------------------'''
+
+	def list(self):
+		out = []
+		for hz, mode, name, hits, s in self.db.execute('SELECT hz, mode, name, hits, settings FROM bookmarks ORDER BY hits DESC, hz'):
+			out.append(dict(hz=hz, mode=mode, name=name or self.band(hz), hits=hits, settings=json.loads(s)))
+		return out
+	# list
+
+	def band(self, hz):
+		return next((n for lo, hi, n in self.BANDS if lo <= hz / 1e6 < hi), '')
+
+	def find(self, hz, mode):
+		return next((b for b in self.list() if b['hz'] == hz and b['mode'] == mode), None)
+
+	'''-------------------------------------------------------------------
+		Save: adds the bookmark, or updates this radio's settings in it (other radios' settings, name and hits stay)
+	-------------------------------------------------------------------'''
+
+	def save(self, radio, hz, mode, settings):
+		b = self.find(hz, mode)
+		s = b['settings'] if b else {}
+		s[radio] = settings
+		self.db.execute('INSERT INTO bookmarks (hz, mode, settings) VALUES (?, ?, ?) ON CONFLICT (hz, mode) DO UPDATE SET settings = excluded.settings, updated = CURRENT_TIMESTAMP',
+			(hz, mode, json.dumps(s)))
+		self.db.commit()
+		return
+	# save
+
+	def picked(self, b):
+		self.db.execute('UPDATE bookmarks SET hits = hits + 1 WHERE hz = ? AND mode = ?', (b['hz'], b['mode']))
+		self.db.commit()
+
+	def rename(self, b, name):		# '' goes back to the band label
+		self.db.execute('UPDATE bookmarks SET name = ? WHERE hz = ? AND mode = ?', (name, b['hz'], b['mode']))
+		self.db.commit()
+
+	def delete(self, b):
+		self.db.execute('DELETE FROM bookmarks WHERE hz = ? AND mode = ?', (b['hz'], b['mode']))
+		self.db.commit()
+
+	'''-------------------------------------------------------------------
+		where a radio was left: (hz, mode, settings) or None
+	-------------------------------------------------------------------'''
+
+	def last(self, radio):
+		row = self.db.execute('SELECT hz, mode, settings FROM last WHERE radio = ?', (radio,)).fetchone()
+		return (row[0], row[1], json.loads(row[2])) if row else None
+
+	def set_last(self, radio, hz, mode, settings):
+		self.db.execute('INSERT OR REPLACE INTO last (radio, hz, mode, settings) VALUES (?, ?, ?, ?)', (radio, hz, mode, json.dumps(settings)))
+		self.db.commit()
+		return
+	# set_last
+
+# class Bookmarks
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
 class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON lines on its stdout; same face as civ.Rig
 	MODES = ['LSB', 'USB', 'AM', 'WBFM']
 	BANDWIDTHS = ['Narrow voice  1.8 kHz', 'Normal voice  2.8 kHz', 'Wide voice  3.1 kHz', 'Digital  2.8 kHz']		# bw 0-3, SSB only
@@ -316,8 +422,9 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 		starts the rspdx program (C++ demodulators) as a child process
 	-------------------------------------------------------------------'''
 
-	def __init__(self, path, emit):
+	def __init__(self, path, emit, last=None):		# last: (hz, mode, settings) to start from, as Bookmarks.last gives it
 		self.emit, self.ok, self.tx = emit, False, 0		# ok once rspdx has sent its first state
+		self.start = last		# not self.last: that's rspdx's last stderr line
 		self.state = {}		# rspdx's last state line
 		self.last = ''		# last stderr line, for the box if rspdx dies
 		self.p = QProcess()
@@ -326,7 +433,7 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 		self.p.readyReadStandardError.connect(self.err)
 		self.p.finished.connect(self.ended)
 		self.p.errorOccurred.connect(lambda e: e == QProcess.ProcessError.FailedToStart and self.emit('gone', f"Couldn't run {path}.\n\n{self.p.errorString()}"))
-		self.p.start(str(path), ['-n'])		# no frequency: rspdx restores the last s/save
+		self.p.start(str(path), ['-n', *((f'{last[0] / 1e6:.6f}', last[1].lower()) if last else ())])		# no frequency: rspdx starts at its default
 		return
 	# __init__
 
@@ -341,8 +448,8 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 			try:
 				m = json.loads(line)
 				if m['type'] == 'state':
-					if not self.ok:
-						self.send('bm')		# first state: rspdx is up, ask for the bookmarks
+					if not self.ok and self.start:		# first state: rspdx is up, put back the settings it was left with
+						self.apply(self.start[1], self.start[2])
 					self.ok, self.state = True, m['state']
 					self.show()
 				elif m['type'] == 'notice':		# every command gets one; a refused command changes no state, so put the controls back
@@ -350,8 +457,8 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 					self.show()
 				elif m['type'] == 'meter':		# every 250 ms
 					self.emit('meter', (m['adc'], m['sig'], m['nbr']))
-				elif m['type'] == 'bookmarks':		# at start and after save, pick, rename, delete
-					self.emit('bookmarks', m['list'])
+				elif m['type'] == 'bookmarks':		# rspdx's own list, empty under shack (bookmarks.db is shack's)
+					pass
 			except (ValueError, KeyError, TypeError) as e:		# not JSON, or an rspdx older than this file (pull without ./build.sh): log it, keep going
 				log.error(f'rspdx: bad line ({e!r}): {line.strip()}')
 				self.emit('error', 'rspdx sent something unexpected (rebuild it after the last pull?), see shack.log')
@@ -372,6 +479,27 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 			self.emit(k, st[k])
 		self.emit('ovl', (st['ovl'], st['ovln']))
 	# show
+
+	'''-------------------------------------------------------------------
+		what a bookmark keeps for the RSPdx, and putting it back
+	-------------------------------------------------------------------'''
+
+	KEEP = ('v', 'if', 'lna', 'ant', 'notch', 'dab', 'hdr', 'bw', 'nb', 'nr')
+
+	def settings(self):
+		return {k: self.state[k] for k in self.KEEP if k in self.state}
+
+	def apply(self, mode, s):
+		for k, v in s.items():
+			if k == 'nb':		# 0 = off, else its trigger level (which turns it on)
+				self.set('nbdb', v) if v else self.set('nb', 0)
+			elif k == 'bw':
+				if v >= 0 and mode in ('LSB', 'USB'):		# SSB only
+					self.set('bw', v)
+			elif k in self.KEEP:
+				self.set(k, v)
+		return
+	# apply
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
@@ -414,12 +542,6 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 			self.send(f'{k} {int(v)}')
 		elif k == 'nbdb':		# blanker level; rspdx turns the blanker on at it
 			self.send(f'nb {v}')
-		elif k == 'save':
-			self.send('s')
-		elif k in ('bmpick', 'bmdel'):		# v = bookmark dict from the list
-			self.send(f"{k} {v['hz']} {v['mode']}")
-		elif k == 'bmname':		# v = (bookmark, new name); '' goes back to the band label
-			self.send(f"bmname {v[0]['hz']} {v[0]['mode']} {v[1]}")
 	# set
 
 	'''-------------------------------------------------------------------
@@ -457,6 +579,7 @@ class Shack(QMainWindow):
 		super().__init__()
 		self.setWindowTitle('shack')
 		self.a, self.rig, self.srv = a, None, None
+		self.bm = Bookmarks(HERE / 'bookmarks.db', Path(a.rspdx).parent / 'settings.db')
 		self.got.connect(self.on_rig, Qt.ConnectionType.QueuedConnection)		# always via the event loop, never inside a rig callback
 
 		self.radio = QComboBox()
@@ -534,8 +657,8 @@ class Shack(QMainWindow):
 			self.sw[k].clicked.connect(lambda on, k=k: self.rig and self.rig.set(k, on))
 			switches.insertWidget(0 if k == 'pre' else 1, self.sw[k])
 		self.sw['nr'].setToolTip('RNNoise: removes the noise floor under voice (SSB, AM). Turn off for very weak signals, music and CW; Digital out is unaffected')
-		self.save = QPushButton('Save', toolTip='Store these settings for this frequency and mode, and start here next time (like s in the TUI)')
-		self.save.clicked.connect(lambda: self.rig and self.rig.set('save', 1))
+		self.save = QPushButton('Save', toolTip='Bookmark this frequency and mode with the radio\'s settings (updates it if it\'s already there)')
+		self.save.clicked.connect(self.bm_save)
 		switches.addWidget(self.save)
 		switches.addStretch()		# buttons keep their size when others are hidden
 		self.adc = QProgressBar(minimum=-60, maximum=0, value=-60, format='', toolTip='Broadband level into the RSPdx ADC; red above -6 dBFS: back off the gain')
@@ -548,7 +671,7 @@ class Shack(QMainWindow):
 		hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)		# Name takes the spare width
 		self.bms.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 		self.bms.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-		self.bms.cellDoubleClicked.connect(lambda r, c: self.rig and self.rig.set('bmpick', self.bmlist[r]))
+		self.bms.cellDoubleClicked.connect(lambda r, c: self.bm_pick(r))
 		self.bms.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.bms.customContextMenuRequested.connect(self.bm_menu)
 		self.bmlist = []
@@ -660,9 +783,10 @@ class Shack(QMainWindow):
 	def open_rx(self):
 		if not Path(self.a.rspdx).is_file():
 			return self.oops(f"Can't find rspdx at {self.a.rspdx}.\n\nIs it built? (./build.sh)")
-		self.rig = Rspdx(self.a.rspdx, self.got.emit)
+		self.rig = Rspdx(self.a.rspdx, self.got.emit, self.bm.last('RSPdx'))
 		self.smeter.setRange(-100, -40)		# the TUI's signal scale, dBFS in the passband
 		self.show_radio('RSPdx', Rspdx.MODES, 2000, (self.freq, self.mode, self.vol, self.smeter, *self.rsp))		# no PTT on a receiver
+		self.show_bms()
 		return
 	# open_rx
 
@@ -697,6 +821,8 @@ class Shack(QMainWindow):
 	def shut(self):
 		self.ptt_limit.stop()
 		if self.rig:
+			if isinstance(self.rig, Rspdx) and self.rig.ok:		# start here next time
+				self.bm.set_last('RSPdx', round(self.rig.state['mhz'] * 1e6), self.rig.state['mode'].upper(), self.rig.settings())
 			if isinstance(self.rig, civ.Rig) and (self.rig.tx or self.pttb.isChecked()):		# the button may be ahead of the radio's report
 				self.rig.ptt(False)
 			self.rig.close()
@@ -707,7 +833,7 @@ class Shack(QMainWindow):
 		self.radio.setCurrentText('none')
 		self.clients.setText('')
 		self.on_rig('ovl', (0, 0))
-		self.on_rig('bookmarks', [])
+		self.bms.setRowCount(0)
 		self.adc.setValue(-60)
 		self.smeter.setValue(self.smeter.minimum())
 		self.smeter.setFormat('')
@@ -877,12 +1003,6 @@ class Shack(QMainWindow):
 			self.smeter.setValue(round(max(-100, min(-40, sig))))
 			self.smeter.setFormat(f'{sig:.1f} dBFS')
 			self.nbr.setText(f'{nbr:.1f}/s' if self.sw['nb'].isChecked() else '')
-		elif k == 'bookmarks':
-			self.bmlist = v
-			self.bms.setRowCount(len(v))
-			for r, b in enumerate(v):
-				for c, t in enumerate((b['name'], f"{b['hz'] / 1e6:.6f}", b['mode'].upper(), str(b['hits']))):
-					self.bms.setItem(r, c, QTableWidgetItem(t))
 		elif k == 'swr':
 			r, raw = v
 			if raw or (self.rig and self.rig.tx):		# receiving reads 0: keep the last transmission's value
@@ -918,12 +1038,66 @@ class Shack(QMainWindow):
 		if act == ren:
 			name, ok = QInputDialog.getText(self, 'Rename bookmark', 'Name (empty = band label):', text=b['name'])
 			if ok:
-				self.rig.set('bmname', (b, name.strip()))
+				self.bm.rename(b, name.strip())
 		elif act == dele:
-			if QMessageBox.question(self, 'Delete bookmark', f"Delete {b['name']}  {b['hz'] / 1e6:.6f} {b['mode'].upper()}?") == QMessageBox.StandardButton.Yes:
-				self.rig.set('bmdel', b)
+			if QMessageBox.question(self, 'Delete bookmark', f"Delete {b['name']}  {b['hz'] / 1e6:.6f} {b['mode']}?") == QMessageBox.StandardButton.Yes:
+				self.bm.delete(b)
+		self.show_bms()
 		return
 	# bm_menu
+
+	'''-------------------------------------------------------------------
+		the bookmark table; ones the open radio can't tune (mode or range) are greyed and won't pick
+	-------------------------------------------------------------------'''
+
+	def show_bms(self):
+		self.bmlist = self.bm.list()
+		self.bms.setRowCount(len(self.bmlist))
+		for r, b in enumerate(self.bmlist):
+			for c, t in enumerate((b['name'], f"{b['hz'] / 1e6:.6f}", b['mode'], str(b['hits']))):
+				it = QTableWidgetItem(t)
+				if not self.can(b):
+					it.setForeground(QColor('#b0b0b0'))
+					it.setToolTip(f"The {self.radio.currentText()} can't tune this")
+				self.bms.setItem(r, c, it)
+		return
+	# show_bms
+
+	def can(self, b):
+		return self.mode.findText(b['mode']) >= 0 and self.freq.lo <= b['hz'] <= self.freq.hi
+
+	'''-------------------------------------------------------------------
+		double-click: tune there; this radio's settings from the bookmark, if it has any
+	-------------------------------------------------------------------'''
+
+	def bm_pick(self, r):
+		b = self.bmlist[r]
+		if not self.rig or not self.can(b):
+			return self.statusBar().showMessage(f"The {self.radio.currentText()} can't tune {b['hz'] / 1e6:.6f} {b['mode']}", 5000)
+		self.bm.picked(b)
+		self.rig.set('mode', b['mode'])
+		self.rig.set('mhz', b['hz'] / 1e6)
+		s = b['settings'].get(self.radio.currentText())
+		if s:
+			self.rig.apply(b['mode'], s)
+		self.show_bms()
+		return
+	# bm_pick
+
+	'''-------------------------------------------------------------------
+		Save: bookmark the open radio's frequency, mode and settings
+	-------------------------------------------------------------------'''
+
+	def bm_save(self):
+		if not self.rig:
+			return
+		radio, hz, mode, s = self.radio.currentText(), self.freq.hz, self.mode.currentText(), self.rig.settings()
+		self.bm.save(radio, hz, mode, s)
+		self.bm.set_last(radio, hz, mode, s)
+		self.show_bms()
+		self.statusBar().showMessage(f'Saved {hz / 1e6:.6f} {mode}', 5000)
+		return
+	# bm_save
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''

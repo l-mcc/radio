@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
 	rsp.set_gain(50, 5);
 
 	Control control(rsp, vol, mode, mhz * 1e6, 10000);
-	if (!control.open("", argc < 2)) return 1;		// no arguments: restore the last s/save, mode included
+	if (!control.open(headless ? ":memory:" : "", argc < 2)) return 1;		// no arguments: restore the last s/save, mode included. -n: shack.py keeps the bookmarks (bookmarks.db), settings.db stays untouched
 	if (want_wf) wf_on = true;
 	mode = control.state().mode;
 	auto demod = make_demod(mode, vol);
