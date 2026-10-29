@@ -15,7 +15,7 @@ NOWIDTH = ('NBFM', 'WBFM', 'DV')		# fixed filters, 1A 03 gets NG
 SPANS = [2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000]		# ± Hz, center mode
 CTL = {		# key: (cmd, sub); 14 xx is a 0..255 BCD level, 16 xx a single byte
 	'vol': (0x14, 0x01), 'pwr': (0x14, 0x0A), 'rfg': (0x14, 0x02), 'sql': (0x14, 0x03), 'pbt1': (0x14, 0x07), 'pbt2': (0x14, 0x08), 'pre': (0x16, 0x02), 'agc': (0x16, 0x12),
-	'nb': (0x16, 0x22), 'nr': (0x16, 0x40), 'anf': (0x16, 0x41),
+	'nb': (0x16, 0x22), 'nr': (0x16, 0x40), 'anf': (0x16, 0x41), 'nbl': (0x14, 0x12), 'nrl': (0x14, 0x06),		# nbl, nrl: NB and NR levels 0-255
 }
 RCTL = {v: k for k, v in CTL.items()}
 SCOPE = {'fix': 0x14, 'edge': 0x16, 'hold': 0x17}		# 27 xx 00 nn: center/fixed, fixed edge 1..3, hold
@@ -26,6 +26,9 @@ RANGES = [(30, 1600), (1600, 2000), (2000, 6000), (6000, 8000), (8000, 11000), (
 	(22000, 26000), (26000, 30000), (30000, 45000), (45000, 60000), (60000, 74800), (74800, 108000), (108000, 137000),
 	(137000, 200000), (400000, 470000)]		# kHz, the 705's fixed-edge ranges, codes 01..17
 MAXW = 1000		# kHz, widest fixed view (assumed, same as the widest center span)
+
+def ham(mhz):		# inside a (US) ham band: the only places PTT may key
+	return any(lo <= mhz * 1000 <= hi for lo, hi in BANDS)
 
 def band_window(khz):		# (range code, lo, hi) for the ham band around khz, or a 1 MHz window outside the bands
 	rng = next(((i + 1, r) for i, r in enumerate(RANGES) if r[0] <= khz < r[1]), None)
@@ -220,9 +223,13 @@ class Rig:
 		else:
 			s.hdr = None		# dropped a frame; wait for the next header
 
-	def ptt(s, on):
+	def ptt(s, on):		# False: refused, outside the ham bands (unkeying always goes through)
+		if on and not ham(s.mhz):
+			log.info(f'PTT refused: {s.mhz:.6f} MHz is outside the ham bands')
+			return False
 		s.send(0x1C, 0x00, 0x01 if on else 0x00)
 		s.send(0x1C, 0x00)
+		return True
 
 	def set(s, k, v):
 		s.last_set = time.monotonic()
@@ -308,9 +315,9 @@ def serve_ptt(rig, port=4532, host='127.0.0.1'):		# the bit of rigctld xara uses
 						break
 					c = line.decode(errors='replace').split()
 					if len(c) == 2 and c[0] == 'T' and c[1] in ('0', '1'):
-						keyed = c[1] == '1'
-						rig.ptt(keyed)
-						r = 'RPRT 0'
+						ok = rig.ptt(c[1] == '1')
+						keyed = c[1] == '1' and ok
+						r = 'RPRT 0' if ok else 'RPRT -1'		# -1: refused, outside the ham bands
 					elif c == ['t']:
 						r = str(rig.tx)
 					elif c in (['q'], ['Q']):

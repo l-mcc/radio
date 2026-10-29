@@ -50,7 +50,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off (the dB box is RSPdx only). Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. PTT and Power are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -643,6 +643,10 @@ class Shack(QMainWindow):
 		self.nbdb = QSpinBox(minimum=8, maximum=20, value=12, suffix=' dB', keyboardTracking=False, toolTip='Blanker trigger level; changing it turns the blanker on')
 		self.nbdb.valueChanged.connect(lambda v: self.rig and self.rig.set('nbdb', v))
 		self.nbr = QLabel(toolTip='Blanker pulses per second')
+		self.lvl = {}		# CI-V NB and NR levels, %; usable while their switch is on
+		for k, what in (('nb', 'noise blanker'), ('nr', 'noise reduction')):
+			w = self.lvl[k] = QSpinBox(minimum=0, maximum=100, singleStep=5, suffix=' %', keyboardTracking=False, toolTip=f'The radio\'s {what} level; turn the {what} on to change it')
+			w.valueChanged.connect(lambda v, k=k: self.rig and self.rig.set(k + 'l', round(v * 2.55)))
 		self.nbr.setFixedWidth(self.nbr.fontMetrics().horizontalAdvance('9999.9/s'))		# changing text mustn't resize the panel
 		for k, name in Rspdx.SWITCHES.items():
 			b = self.sw[k] = QPushButton(name, checkable=True)
@@ -651,6 +655,8 @@ class Shack(QMainWindow):
 			if k == 'nb':		# its level and rate sit next to it
 				switches.addWidget(self.nbdb)
 				switches.addWidget(self.nbr)
+			if k in self.lvl:		# CI-V: the radio's level
+				switches.addWidget(self.lvl[k])
 		self.sw['pre'] = QPushButton('Preamp', checkable=True)		# CI-V radios
 		self.sw['att'] = QPushButton('ATT', checkable=True)
 		for k in ('pre', 'att'):
@@ -724,7 +730,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.smeter, self.swr, self.power, self.pttrow, self.sw['pre'], self.sw['att'], *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.smeter, self.swr, self.power, self.pttrow, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -771,7 +777,9 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.save, self.bms))		# nb, nr: the radio's own, on/off
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.save, self.bms))		# nb, nr: the radio's own, on/off
+		self.levels()
+		self.tx_band(0)		# no PTT until the radio says where it is
 		self.show_bms()
 		self.on_rig('ptt_clients', 0)
 		return
@@ -893,7 +901,7 @@ class Shack(QMainWindow):
 			self.rig.send(0x1C, 0x00)		# TX/RX, so a short transmission (a tuner cycle) shows
 			if self.n % 4 == 0:
 				self.rig.read_fast()
-				for k in ('vol', 'rfg', 'nb', 'nr', 'pwr', 'pre', 'agc'):		# so the radio's own knob and buttons show up here too
+				for k in ('vol', 'rfg', 'nb', 'nr', 'nbl', 'nrl', 'pwr', 'pre', 'agc'):		# so the radio's own knob and buttons show up here too
 					self.rig.send(*civ.CTL[k])
 				self.rig.send(0x11)		# attenuator
 			self.n += 1
@@ -905,7 +913,10 @@ class Shack(QMainWindow):
 	def key(self, on):
 		if not isinstance(self.rig, civ.Rig):
 			return
-		self.rig.set('ptt', on)
+		if self.rig.ptt(on) is False:		# refused: outside the ham bands
+			self.pttb.setChecked(False)
+			return self.statusBar().showMessage('No transmitting outside the ham bands', 5000)
+		self.rig.last_set = time.monotonic()
 		if on:
 			self.ptt_limit.start()
 		else:
@@ -913,6 +924,30 @@ class Shack(QMainWindow):
 			self.pttb.setChecked(False)
 		return
 	# key
+
+	'''-------------------------------------------------------------------
+		PTT and power only inside the ham bands; tuning out while keyed unkeys
+	-------------------------------------------------------------------'''
+
+	def tx_band(self, mhz):
+		ok = civ.ham(mhz)
+		self.pttb.setEnabled(ok)
+		self.power.setEnabled(ok)
+		self.pttb.setToolTip('Transmit: click to key, click again to stop. Drops back to receive by itself after 30 s' if ok else 'Outside the ham bands: no transmitting')
+		if not ok and (self.pttb.isChecked() or self.rig.tx):
+			self.key(False)
+		return
+	# tx_band
+
+	'''-------------------------------------------------------------------
+		an NB or NR level is usable only while its switch is on (and usable)
+	-------------------------------------------------------------------'''
+
+	def levels(self):
+		for k, w in self.lvl.items():
+			w.setEnabled(self.sw[k].isEnabled() and self.sw[k].isChecked())
+		return
+	# levels
 
 	'''-------------------------------------------------------------------
 		power slider value (% or tenths of a watt) <-> CI-V level 0-255 and its readout
@@ -947,6 +982,8 @@ class Shack(QMainWindow):
 			self.freq.set_mhz(v)
 			if isinstance(self.rig, Rspdx):
 				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rspdx's call, not a command
+			else:
+				self.tx_band(v)
 		elif k == 'mode' and self.mode.findText(v) >= 0:
 			self.mode.setCurrentText(v)
 			if v.removesuffix('-D') in civ.NOWIDTH:		# FM: the radio doesn't report a width
@@ -956,6 +993,7 @@ class Shack(QMainWindow):
 				self.bw.setEnabled(v in ('LSB', 'USB'))
 				self.sw['nb'].setEnabled(v != 'WBFM')
 				self.nbdb.setEnabled(v != 'WBFM')
+			self.levels()
 		elif k == 'bw':
 			self.bw.setCurrentIndex(v)
 		elif k == 'fil' and 1 <= v <= 3:		# CI-V filter preset, from the 04 reply
@@ -964,12 +1002,15 @@ class Shack(QMainWindow):
 			self.filw.setText('?' if not v else f'{v} Hz' if v < 1000 else f'{v / 1000:g} kHz')
 		elif k in self.sw:
 			self.sw[k].setChecked(bool(v))
+			self.levels()
 			if k == 'nb' and v and isinstance(self.rig, Rspdx):		# rspdx's nb carries the level when on, 0 when off
 				quiet(self.nbdb, self.nbdb.setValue, v)
 		elif k == 'v':
 			quiet(self.vol, self.vol.setValue, v)
 		elif k == 'vol':		# CI-V AF level 0-255
 			quiet(self.vol, self.vol.setValue, v / 255)
+		elif k in ('nbl', 'nrl'):		# CI-V NB / NR level 0-255
+			quiet(self.lvl[k[:2]], self.lvl[k[:2]].setValue, round(v / 2.55))
 		elif k == 'rfg':		# CI-V RF gain 0-255
 			quiet(self.rfg, self.rfg.setValue, round(v / 2.55))
 		elif k == 'vfo':		# what civ last set; the radio can't be asked
@@ -1109,7 +1150,7 @@ class Shack(QMainWindow):
 	def settings(self):
 		if isinstance(self.rig, Rspdx):
 			return self.rig.settings()
-		s = {'v': self.vol.value(), 'rfg': self.rfg.value(), **{k: int(self.sw[k].isChecked()) for k in ('pre', 'att', 'nb', 'nr')}}
+		s = {'v': self.vol.value(), 'rfg': self.rfg.value(), 'nbl': self.lvl['nb'].value(), 'nrl': self.lvl['nr'].value(), **{k: int(self.sw[k].isChecked()) for k in ('pre', 'att', 'nb', 'nr')}}
 		if self.fil.currentIndex() >= 0:
 			s['fil'] = self.fil.currentIndex() + 1
 		if self.agc.currentText() in self.agcs:
@@ -1121,8 +1162,8 @@ class Shack(QMainWindow):
 		if isinstance(self.rig, Rspdx):
 			return self.rig.apply(mode, s)
 		for k, v in s.items():
-			if k == 'rfg':
-				self.rig.set('rfg', round(v * 2.55))
+			if k in ('rfg', 'nbl', 'nrl'):		# % -> 0-255
+				self.rig.set(k, round(v * 2.55))
 			elif k in ('v', 'fil', 'pre', 'att', 'nb', 'nr', 'agc'):
 				self.rig.set(k, v)
 		return
