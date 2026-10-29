@@ -5,8 +5,8 @@ import argparse, json, logging, sys, time
 from pathlib import Path
 
 import serial
-from PyQt6.QtCore import pyqtSignal, QEvent, QProcess, Qt, QTimer
-from PyQt6.QtGui import QFont, QKeySequence, QShortcut
+from PyQt6.QtCore import pyqtSignal, QEvent, QProcess, QRect, QSize, Qt, QTimer
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QPainter, QPalette, QShortcut
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
 	QProgressBar, QPushButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
 
@@ -20,11 +20,11 @@ HELP = '''
 <p>Pick IC-705, RSPdx or Xiegu x6200 to open it, none to close it. Only one radio is open at a time; only its own controls are shown. A greyed-out one doesn't apply in the current mode (Bandwidth outside SSB, for example).</p>
 
 <h3>Frequency</h3>
-<p>Mouse wheel: 1 kHz steps, Ctrl+wheel: 10 kHz. Or type a value in MHz and press Enter. The radio's own changes don't overwrite what you're typing.</p>
+<p>Like the waterfall page: the mouse wheel over any digit tunes that digit (the dimmed leading zeros too, for big jumps); clicking a digit's top half steps it up, its bottom half down. Arrow keys: left/right picks a digit, up/down tunes it. Or just type a frequency in MHz (7.074) and press Enter; Esc cancels. The radio's own changes don't overwrite what you're typing.</p>
 
 <h3>RSPdx</h3>
 <table cellspacing="4">
-<tr><td><b>Mode</b></td><td>LSB, USB, AM, WBFM</td></tr>
+<tr><td><b>Mode</b></td><td>LSB, USB, AM, WBFM (broadcast FM)</td></tr>
 <tr><td><b>Volume</b></td><td>0 to 1</td></tr>
 <tr><td><b>IF reduction</b></td><td>20-59 dB; more = less gain</td></tr>
 <tr><td><b>LNA reduction</b></td><td>0 = most gain; the top end depends on the band</td></tr>
@@ -77,6 +77,231 @@ def quiet(w, f, *a):		# change a widget from the radio's side without echoing it
 	w.blockSignals(True)
 	f(*a)
 	w.blockSignals(False)
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
+class Freq(QWidget):		# frequency readout that works like the waterfall page's: wheel or click on any digit tunes that digit
+	changed = pyqtSignal(float)		# MHz, on every step and on Enter
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def __init__(self):
+		super().__init__()
+		self.setFont(QFont('DejaVu Sans Mono', 30, QFont.Weight.DemiBold))
+		self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+		self.setMouseTracking(True)		# hover highlight without a button down
+		self.setToolTip('Wheel over a digit tunes it; click its top half for up, bottom half for down.\nArrow keys: left/right picks a digit, up/down tunes it.\nOr type a frequency in MHz and press Enter (Esc cancels)')
+		self.hz, self.lo, self.hi, self.ndig = 0, 30000, 2000000000, 10
+		self.hover = None		# digit under the mouse
+		self.cur = None		# digit the arrow keys tune
+		self.typed = None		# MHz being typed; None = showing the frequency
+		self.moved = 0		# when we last tuned: the radio's older reports mustn't pull the display back
+		self.notches = 0		# wheel angle not yet used (touchpads send fractions of a notch)
+		return
+	# __init__
+
+	'''-------------------------------------------------------------------
+		top of the band in MHz: also how many digits there are
+	-------------------------------------------------------------------'''
+
+	def set_top(self, mhz):
+		self.hi = round(mhz * 1e6)
+		self.ndig = len(str(self.hi))
+		self.cur, self.moved = None, 0		# a new radio: take its first report
+		self.updateGeometry()
+		self.update()
+		return
+	# set_top
+
+	'''-------------------------------------------------------------------
+		the radio's frequency; ignored for a second after we tune, so a slow report doesn't rubber-band the display
+	-------------------------------------------------------------------'''
+
+	def set_mhz(self, mhz):
+		if time.monotonic() - self.moved < 1:
+			return
+		self.hz = round(mhz * 1e6)
+		self.update()
+		return
+	# set_mhz
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def tune(self, hz):
+		self.hz, self.moved = hz, time.monotonic()
+		self.update()
+		self.changed.emit(hz / 1e6)
+		return
+	# tune
+
+	'''-------------------------------------------------------------------
+		one step of digit i; a step off either end is ignored, as on the waterfall page
+	-------------------------------------------------------------------'''
+
+	def step(self, i, up):
+		n = self.hz + (1 if up else -1) * 10 ** (self.ndig - 1 - i)
+		if self.lo <= n <= self.hi:
+			self.tune(n)
+		return
+	# step
+
+	'''-------------------------------------------------------------------
+		(x, width, digit index or None, text) for each character, left to right; dots between groups of three
+	-------------------------------------------------------------------'''
+
+	def cells(self):
+		cw = self.fontMetrics().horizontalAdvance('0')
+		out, x = [], 4
+		for i, c in enumerate(str(self.hz).zfill(self.ndig)[-self.ndig:]):
+			out.append((x, cw, i, c))
+			x += cw
+			if i < self.ndig - 1 and (self.ndig - 1 - i) % 3 == 0:
+				out.append((x, cw * 2 // 3, None, '.'))
+				x += cw * 2 // 3
+		return out
+	# cells
+
+	def digit_at(self, px):
+		return next((i for x, w, i, t in self.cells() if i is not None and x <= px < x + w), None)
+
+	def unit_font(self):
+		f = QFont(self.font())
+		f.setPointSize(self.font().pointSize() * 2 // 5)
+		return f
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def sizeHint(self):
+		x, w, i, t = self.cells()[-1]
+		return QSize(x + w + QFontMetrics(self.unit_font()).horizontalAdvance('  MHz') + 8, self.fontMetrics().height() + 8)
+
+	def minimumSizeHint(self):
+		return self.sizeHint()
+
+	'''-------------------------------------------------------------------
+		digits, leading zeros and dots dimmed, the hovered digit shaded, the arrow keys' digit underlined
+	-------------------------------------------------------------------'''
+
+	def paintEvent(self, e):
+		p = QPainter(self)
+		ink = self.palette().color(QPalette.ColorRole.WindowText)
+		dim = QColor('#a0a0a0')
+		shade = QColor(self.palette().color(QPalette.ColorRole.Highlight))
+		shade.setAlpha(50)
+		h = self.height()
+		if self.typed is not None:		# typing: show what's typed, nothing else
+			p.setPen(ink)
+			p.drawText(QRect(4, 0, self.width() - 4, h), Qt.AlignmentFlag.AlignVCenter, self.typed + '_')
+			x = 4 + self.fontMetrics().horizontalAdvance(self.typed + '_')
+			unit = 'MHz'
+		else:
+			first = next((i for i, c in enumerate(str(self.hz).zfill(self.ndig)) if c != '0'), self.ndig)
+			for x, w, i, t in self.cells():
+				if i is not None and i == self.hover:
+					p.fillRect(QRect(x, 2, w, h - 4), shade)
+				if i is not None and i == self.cur and self.hasFocus():
+					p.fillRect(QRect(x + 2, h - 5, w - 4, 3), ink)
+				p.setPen(ink if i is not None and i >= first and self.isEnabled() else dim)
+				p.drawText(QRect(x, 0, w, h), Qt.AlignmentFlag.AlignCenter, t)
+			x += w
+			unit = 'Hz'
+		p.setPen(dim)
+		p.setFont(self.unit_font())
+		p.drawText(QRect(x + 6, 0, self.width() - x, h), Qt.AlignmentFlag.AlignVCenter, unit)
+		return
+	# paintEvent
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def wheelEvent(self, e):
+		i = self.digit_at(e.position().x())
+		if i is None:
+			return e.ignore()
+		self.notches += e.angleDelta().y()
+		while abs(self.notches) >= 120:
+			self.step(i, self.notches > 0)
+			self.notches -= 120 if self.notches > 0 else -120
+		e.accept()
+		return
+	# wheelEvent
+
+	def mousePressEvent(self, e):		# top half up, bottom half down
+		i = self.digit_at(e.position().x())
+		if i is not None and e.button() == Qt.MouseButton.LeftButton:
+			self.cur = i
+			self.step(i, e.position().y() < self.height() / 2)
+		return
+
+	def mouseMoveEvent(self, e):
+		i = self.digit_at(e.position().x())
+		self.setCursor(Qt.CursorShape.SizeVerCursor if i is not None else Qt.CursorShape.ArrowCursor)
+		if i != self.hover:
+			self.hover = i
+			self.update()
+		return
+
+	def leaveEvent(self, e):
+		self.hover = None
+		self.update()
+		return
+
+	def focusOutEvent(self, e):		# leaving drops a half-typed frequency
+		self.typed = None
+		self.update()
+		return super().focusOutEvent(e)
+
+	'''-------------------------------------------------------------------
+		typing a frequency in MHz (digits and a point), or arrows on a digit
+	-------------------------------------------------------------------'''
+
+	def keyPressEvent(self, e):
+		k, t = e.key(), e.text()
+		if self.typed is not None:
+			if k in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+				return self.enter()
+			elif k == Qt.Key.Key_Escape:
+				self.typed = None
+			elif k == Qt.Key.Key_Backspace:
+				self.typed = self.typed[:-1] or None
+			elif t and t in '0123456789.':
+				self.typed += t
+			else:
+				return super().keyPressEvent(e)
+		elif t and t in '0123456789.':
+			self.typed = t
+		elif k in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+			c = self.ndig - 4 if self.cur is None else self.cur		# starts on the kHz digit
+			self.cur = max(0, min(self.ndig - 1, c + (1 if k == Qt.Key.Key_Right else -1)))
+		elif k in (Qt.Key.Key_Up, Qt.Key.Key_Down):
+			if self.cur is None:
+				self.cur = self.ndig - 4
+			self.step(self.cur, k == Qt.Key.Key_Up)
+		else:
+			return super().keyPressEvent(e)
+		self.update()
+		return
+	# keyPressEvent
+
+	def enter(self):		# out of range or not a number: beep and leave it to be fixed
+		try:
+			n = round(float(self.typed) * 1e6)
+		except ValueError:
+			n = -1
+		if not self.lo <= n <= self.hi:
+			return QApplication.beep()
+		self.typed = None
+		self.tune(n)
+		return
+	# enter
+
+# class Freq
+
 
 '''===================================================================================================================================================
 
@@ -237,10 +462,8 @@ class Shack(QMainWindow):
 		self.radio = QComboBox()
 		self.radio.addItems(['none', 'IC-705', 'RSPdx', 'Xiegu x6200'])
 		self.radio.activated.connect(lambda i: self.pick(self.radio.itemText(i)))
-		self.freq = QDoubleSpinBox(decimals=6, minimum=0.03, maximum=470, singleStep=0.001, suffix=' MHz', keyboardTracking=False)
-		self.freq.setFont(QFont('monospace', 20))
-		self.freq.valueChanged.connect(lambda v: self.rig and self.rig.set('mhz', v))		# Enter, wheel (1 kHz, Ctrl 10 kHz), arrows
-		self.freq.editingFinished.connect(lambda: self.freq.lineEdit().setModified(False))
+		self.freq = Freq()
+		self.freq.changed.connect(lambda v: self.rig and self.rig.set('mhz', v))
 		self.mode = QComboBox()
 		self.mode.activated.connect(lambda i: self.rig and self.rig.set('mode', self.mode.itemText(i)))
 		self.power = QWidget(toolTip='Transmit power, % of the radio\'s maximum. Changing it doesn\'t transmit')		# slider + its % readout
@@ -335,7 +558,7 @@ class Shack(QMainWindow):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
 			g.addWidget(self.labels[w], row, 0)
-			g.addWidget(w, row, 1, 1, 2 if w in (self.ovl, self.adc, self.smeter, self.power, self.pttrow) else 1)
+			g.addWidget(w, row, 1, 1, 2 if w in (self.freq, self.ovl, self.adc, self.smeter, self.power, self.pttrow) else 1)
 		row += 1
 		g.addLayout(switches, row, 0, 1, 3)
 		self.helpw = None
@@ -429,7 +652,7 @@ class Shack(QMainWindow):
 		self.radio.setCurrentText(name)
 		self.mode.clear()
 		self.mode.addItems(modes)
-		self.freq.setMaximum(top)
+		self.freq.set_top(top)
 		for w in live:
 			w.setEnabled(True)		# a mode may grey some out again (bandwidth outside SSB...)
 		self.only(live)
@@ -570,10 +793,8 @@ class Shack(QMainWindow):
 	def on_rig(self, k, v):
 		if v is None and k != 'pwr':		# a level the radio sent as junk
 			return
-		if k == 'mhz' and not self.freq.lineEdit().isModified():		# don't overwrite typing
-			self.freq.blockSignals(True)
-			self.freq.setValue(v)
-			self.freq.blockSignals(False)
+		if k == 'mhz':		# Freq keeps what's being typed, and ignores reports for a second after a step
+			self.freq.set_mhz(v)
 			if isinstance(self.rig, Rspdx):
 				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rspdx's call, not a command
 		elif k == 'mode' and self.mode.findText(v) >= 0:
