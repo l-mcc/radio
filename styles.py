@@ -59,3 +59,14 @@ style = '''
 		color: #c8c8c8;
 	}
 '''
+
+# shack.py's decoder area: the control row, the spectrum strip under it, the decoded text
+decoder = dict(
+	row='#dde6f0',		# background of the Decoder row
+	text='#fbf8ec',		# background of the decoded text
+	spectrum='#14202c',		# strip background
+	fill='#4a9eff',		# the spectrum itself
+	grid='#2c3a48',		# 500 Hz lines
+	labels='#8a9aaa',		# Hz numbers
+	squelch='#b0b0b0',		# dashed squelch line
+)

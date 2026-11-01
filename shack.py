@@ -59,7 +59,10 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. PTT and Power are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+
+<h3>Spectrum</h3>
+<p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. The decoder area's colors are in styles.py (decoder).</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -493,7 +496,7 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 		what a bookmark keeps for the RSPdx, and putting it back
 	-------------------------------------------------------------------'''
 
-	KEEP = ('v', 'if', 'lna', 'ant', 'notch', 'dab', 'hdr', 'bw', 'nb', 'nr')
+	KEEP = ('v', 'if', 'lna', 'ant', 'notch', 'dab', 'hdr', 'bw', 'nb', 'nr', 'ref')		# ref: the waterfall's reference level, dB
 
 	def settings(self):
 		return {k: self.state[k] for k in self.KEEP if k in self.state}
@@ -547,6 +550,8 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 			self.send(f'ant {v.lower()}')
 		elif k == 'bw':
 			self.send(f'bw {v}')
+		elif k == 'ref':
+			self.send(f'ref {v:g}')
 		elif k in self.SWITCHES:		# on/off
 			self.send(f'{k} {int(v)}')
 		elif k == 'nbdb':		# blanker level; rspdx turns the blanker on at it
@@ -608,15 +613,15 @@ class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: 
 	def paintEvent(self, e):
 		p = QPainter(self)
 		w, h = self.width(), self.height() - 14		# bottom 14 px: Hz labels
-		p.fillRect(self.rect(), self.palette().color(QPalette.ColorRole.Base))
+		p.fillRect(self.rect(), QColor(styles.decoder['spectrum']))		# colors: styles.py
 		if not decode:
 			return
 		p.setFont(QFont('DejaVu Sans', 7))
 		for f in range(500, decode.F1, 500):
 			x = self.px(f)
-			p.setPen(QColor('#e0e0e0'))
+			p.setPen(QColor(styles.decoder['grid']))
 			p.drawLine(x, 0, x, h)
-			p.setPen(QColor('#808080'))
+			p.setPen(QColor(styles.decoder['labels']))
 			p.drawText(QRect(x - 25, h, 50, 14), Qt.AlignmentFlag.AlignCenter, f'{f}')
 		d = self.owner.dec
 		if not d or d.tu.avg is None:
@@ -628,13 +633,13 @@ class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: 
 		col = np.maximum.reduceat(db, edges[:-1].astype(int))		# loudest bin in each column
 		band = getattr(d, 'band', None)		# VARA, packet: the audio they decode, shaded
 		if band:
-			p.fillRect(QRect(self.px(band[0]), 0, self.px(band[1]) - self.px(band[0]), h), QColor(32, 160, 32, 40))
+			p.fillRect(QRect(self.px(band[0]), 0, self.px(band[1]) - self.px(band[0]), h), QColor(32, 160, 32, 60))
 		pts = [QPointF(0, h)] + [QPointF(i, y(v)) for i, v in enumerate(col)] + [QPointF(w, h)]
 		p.setPen(Qt.PenStyle.NoPen)
-		p.setBrush(QColor('#3a7bd5'))
+		p.setBrush(QColor(styles.decoder['fill']))
 		p.drawPolygon(QPolygonF(pts))
 		if tu.sq <= self.TOP:
-			p.setPen(QPen(QColor('#606060'), 1, Qt.PenStyle.DashLine))
+			p.setPen(QPen(QColor(styles.decoder['squelch']), 1, Qt.PenStyle.DashLine))
 			p.drawLine(0, round(y(tu.sq)), w, round(y(tu.sq)))
 		if tu.center:
 			sh = getattr(d, 'shift', 0)
@@ -771,6 +776,28 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 
 ==================================================================================================================================================='''
 
+class Scope:		# Spectrum button with no decoder running: the strip alone. Same face as decode.Rtty / Cw
+	def __init__(self):
+		self.tu = decode.Tuner(None, 99, 0, 4)		# a 99 dB squelch never picks a signal: no marker, no squelch line
+		self.op = False
+
+	def __call__(self, x):
+		self.tu(x)
+		return '', False
+
+	def info(self):
+		return ''
+
+	def tune(self, f):
+		return
+
+# class Scope
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
 class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwolf) and JS8 (JS8Call), on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
 	KINDS = ['Off', 'RTTY', 'CW', 'VARA', 'Packet', 'JS8']
 	SINK, JS8PORT = 'shack_js8', 2242		# JS8: null sink JS8Call's input listens to (its monitor); JS8Call's UDP API port
@@ -792,6 +819,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		self.pk = 300		# packet baud
 		self.hide = True		# hide direwolf's complaints about non-APRS packets
 		self.api, self.js8 = None, None		# JS8: socket JS8Call's API sends to; (when it last pinged, its version)
+		self.scope, self.ready = False, False		# Spectrum button: strip on with no decoder; a radio is open (shack sets it)
 		self.lines = {}		# JS8: offset Hz: (cursor at the start of that message's line, when its last frame came, the line's start); a message's frames join one line
 		self.load()
 		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, VARA, packet or JS8 (through JS8Call). Right-click for settings')
@@ -801,15 +829,20 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		self.sql.valueChanged.connect(self.set_sq)
 		self.status = QLabel(NODECODE and f"can't decode: {NODECODE}" or '')
 		self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)		# changing text mustn't resize the window
-		self.row = QWidget(toolTip='Right-click: Auto tune, RTTY, VARA and packet settings, Clear')
+		self.row = QWidget(toolTip='Right-click: Auto tune, RTTY, VARA and packet settings, Clear', objectName='decoderRow')
+		self.row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)		# a plain QWidget paints a style sheet background only with this
+		self.row.setStyleSheet(f"QWidget#decoderRow {{ background-color: {styles.decoder['row']}; border-radius: 4px; }}")		# colors: styles.py
 		h = QHBoxLayout(self.row)
-		h.setContentsMargins(0, 0, 0, 0)
+		h.setContentsMargins(4, 2, 4, 2)
 		h.addWidget(self.pick)
 		h.addWidget(self.sql)
 		h.addWidget(self.status, 1)
 		self.text = QPlainTextEdit(readOnly=True, toolTip='Decoded text. Scroll up to read back; right-click for Clear and settings')
 		self.text.setMaximumBlockCount(500)
 		self.text.setFont(QFont('DejaVu Sans Mono', 11))
+		self.text.setStyleSheet(f"QPlainTextEdit {{ background-color: {styles.decoder['text']}; }}")
+		self.scopeb = QPushButton('Spectrum', checkable=True, checked=self.scope, toolTip='The audio spectrum strip, also with no decoder running (voice, music...)')
+		self.scopeb.clicked.connect(self.set_scope)
 		self.spec = Spectrum(self)
 		for w in (self.row, self.spec, self.text):
 			w.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -825,7 +858,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 	def start(self, kind):
 		self.stop()
 		if kind == 'Off':
-			return
+			if not (self.scope and self.ready):
+				return
+			kind = 'Scope'		# no decoder, Spectrum on: the strip alone
 		if not decode:
 			quiet(self.pick, self.pick.setCurrentIndex, 0)
 			return self.status.setText(f"can't decode: {NODECODE}")
@@ -844,10 +879,11 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 				return self.status.setText(why)
 		self.kind, self.heard = kind, time.monotonic()
 		self.make()
-		self.sql.setEnabled(kind not in Helper.PROGRAMS)		# the programs have no squelch here
+		self.sql.setEnabled(kind not in Helper.PROGRAMS and kind != 'Scope')		# the programs have no squelch here
 		self.digi()
 		self.timer.start()
-		self.save()
+		if kind != 'Scope':
+			self.save()
 		return
 	# start
 
@@ -895,6 +931,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 	-------------------------------------------------------------------'''
 
 	def make(self, center=None):		# center: stay locked there; None = tune itself
+		if self.kind == 'Scope':
+			self.dec = Scope()
+			return
 		if self.kind in Helper.PROGRAMS:
 			if self.kind == 'VARA':
 				h = Helper('VARA', ['--stdin', '48000', '--hf', str(self.hf)], (1500 - self.hf / 2, 1500 + self.hf / 2), self.add, self.died)		# VARA sits at 1500 Hz
@@ -945,6 +984,31 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		quiet(self.pick, self.pick.setCurrentIndex, 0)
 		return
 
+	'''-------------------------------------------------------------------
+		Spectrum button: on with no decoder starts the strip alone; off stops it (a decoder keeps its strip)
+	-------------------------------------------------------------------'''
+
+	def set_scope(self, on):
+		self.scope = on
+		if on and self.ready and not self.dec:
+			self.start('Off')
+		elif not on and self.kind == 'Scope' and self.dec:
+			self.off()
+		self.save()
+		return
+	# set_scope
+
+	def opened(self, alsa):		# a radio was opened: where its audio comes from (None = RSPdx Digital out); the strip starts if Spectrum is on
+		self.alsa, self.ready = alsa, True
+		if self.scope:
+			self.start('Off')
+		return
+
+	def closed(self):		# the radio is being closed
+		self.ready = False
+		self.off()
+		return
+
 	def died(self, why):		# the decoder program stopped by itself
 		self.dec = None		# already gone, nothing to close
 		self.off()
@@ -980,6 +1044,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		tu = self.dec.tu
 		if time.monotonic() - self.heard > 1:
 			t = f'no audio from {self.alsa}' if self.alsa else 'no audio: is Digital out on?'
+		elif self.kind == 'Scope':
+			t = 'spectrum only'
 		elif self.kind == 'VARA':
 			t = f'{self.hf} Hz   xara-monitor listening'
 		elif self.kind == 'Packet':
@@ -1179,7 +1245,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		if w is self.text:
 			m.addSeparator()
 		d = self.dec
-		if d and not isinstance(d, Helper):		# ticked = following the strongest signal; unticking locks where it is
+		if d and not isinstance(d, (Helper, Scope)):		# ticked = following the strongest signal; unticking locks where it is
 			self.check(m, 'Auto tune', not d.tu.fixed, lambda on: d.tune(None if on else d.tu.center))
 		r = m.addMenu('RTTY')
 		if decode:
@@ -1228,6 +1294,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			self.hf = int(c.get('hf', self.hf))
 			self.pk = int(c.get('pk', self.pk))
 			self.hide = bool(c.get('hide', self.hide))
+			self.scope = bool(c.get('scope', self.scope))
 		except (OSError, ValueError, KeyError, TypeError, AttributeError):
 			pass
 		return
@@ -1238,7 +1305,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			return
 		try:
 			with open(decode.CONF, 'w') as f:
-				json.dump({'kind': self.kind, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf, 'pk': self.pk, 'hide': self.hide}, f)
+				json.dump({'kind': self.kind if self.kind in self.sq else 'RTTY', 'scope': self.scope, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf, 'pk': self.pk, 'hide': self.hide}, f)
 		except OSError as e:
 			log.error(f'decoder settings: {e}')
 		return
@@ -1363,7 +1430,7 @@ class Shack(QMainWindow):
 		self.bms.customContextMenuRequested.connect(self.bm_menu)
 		self.bmlist = []
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
-		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
+		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
 		self.tx = QLabel('RX')
@@ -1399,6 +1466,7 @@ class Shack(QMainWindow):
 		hb.clicked.connect(self.help)
 		QShortcut(QKeySequence.StandardKey.HelpContents, self, self.help)
 		more.addWidget(hb)
+		more.addWidget(self.dec.scopeb)
 		more.addStretch()
 		row += 1
 		g.addLayout(more, row, 0, 1, 3)
@@ -1467,9 +1535,9 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.dec.alsa = r['audio']		# decoders read the radio's USB sound card
 		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.save, self.bms,
-			self.dec.row, self.dec.spec, self.dec.text))		# nb, nr: the radio's own, on/off
+			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))		# nb, nr: the radio's own, on/off
+		self.dec.opened(r['audio'])		# decoders read the radio's USB sound card
 		self.levels()
 		self.tx_band(0)		# no PTT until the radio says where it is
 		self.show_bms()
@@ -1486,8 +1554,8 @@ class Shack(QMainWindow):
 			return self.oops(f"Can't find rspdx at {self.a.rspdx}.\n\nIs it built? (./build.sh)")
 		self.rig = Rspdx(self.a.rspdx, self.got.emit, self.bm.last('RSPdx'))
 		self.smeter.setRange(-100, -40)		# the TUI's signal scale, dBFS in the passband
-		self.dec.alsa = None		# decoders read Digital out
 		self.show_radio('RSPdx', Rspdx.MODES, 2000, (self.freq, self.mode, self.vol, self.smeter, *self.rsp))		# no PTT on a receiver
+		self.dec.opened(None)		# decoders read Digital out
 		self.show_bms()
 		return
 	# open_rx
@@ -1522,7 +1590,7 @@ class Shack(QMainWindow):
 
 	def shut(self):
 		self.ptt_limit.stop()
-		self.dec.off()
+		self.dec.closed()
 		if self.rig:
 			if isinstance(self.rig, Rspdx) and self.rig.ok:		# start here next time
 				self.bm.set_last('RSPdx', round(self.rig.state['mhz'] * 1e6), self.rig.state['mode'].upper(), self.rig.settings())
@@ -1625,7 +1693,7 @@ class Shack(QMainWindow):
 
 	def tx_band(self, mhz):
 		ok = civ.ham(mhz)
-		self.pttb.setEnabled(ok)
+		self.pttrow.setEnabled(ok)		# the whole line, its label too
 		self.power.setEnabled(ok)
 		self.pttb.setToolTip('Transmit: click to key, click again to stop. Drops back to receive by itself after 30 s' if ok else 'Outside the ham bands: no transmitting')
 		if not ok and (self.pttb.isChecked() or self.rig.tx):
