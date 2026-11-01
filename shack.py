@@ -686,6 +686,7 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 		self.name, self.band, self.add, self.gone = self.PROGRAMS[kind][0], band, add, gone
 		self.tu = decode.Tuner(None, 99, 0, 4)		# spectrum only; a 99 dB squelch never picks a signal
 		self.op, self.last = False, ''		# last: its last stderr line
+		self.hush = kind == 'Packet'		# direwolf talks a lot before its first packet (VOX advice...): shack.log until then
 		self.p = QProcess()
 		self.p.readyReadStandardOutput.connect(self.out)
 		self.p.readyReadStandardError.connect(self.err)
@@ -718,13 +719,15 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 		return
 
 	'''-------------------------------------------------------------------
-		stdout: decoded lines (chatter to shack.log); stderr: to shack.log
+		stdout: decoded lines (start-up and exit chatter to shack.log); stderr: to shack.log
 	-------------------------------------------------------------------'''
 
 	def out(self):
 		while self.p.canReadLine():
 			line = bytes(self.p.readLine()).decode(errors='replace').rstrip()
-			if line.startswith(self.CHATTER) or not line.strip():
+			if self.hush and 'audio level' in line:		# a packet's first line
+				self.hush = False
+			if self.hush or line.startswith(self.CHATTER) or not line.strip():
 				log.info(f'{self.name}: {line}') if line.strip() else None
 			else:
 				self.add(line + '\n')
@@ -982,12 +985,12 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 	# packet
 
 	'''-------------------------------------------------------------------
-		direwolf's config, written fresh each start: audio from stdin, nothing out, no network ports (nothing to clash with)
+		direwolf's config, written fresh each start: audio from stdin, nothing out, no network ports or announcing (nothing to clash with)
 	-------------------------------------------------------------------'''
 
 	def dwconf(self):
 		path = Path(tempfile.gettempdir()) / 'shack-direwolf.conf'
-		path.write_text(f'ADEVICE stdin null\nARATE 48000\nACHANNELS 1\nCHANNEL 0\nMODEM {self.pk}\nAGWPORT 0\nKISSPORT 0\n')
+		path.write_text(f'ADEVICE stdin null\nARATE 48000\nACHANNELS 1\nCHANNEL 0\nMODEM {self.pk}\nAGWPORT 0\nKISSPORT 0\nDNSSD 0\n')
 		return str(path)
 	# dwconf
 
