@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, logging, sqlite3, sys, time
+import argparse, json, logging, socket, sqlite3, sys, time
 from pathlib import Path
 
 import serial
 from PyQt6.QtCore import pyqtSignal, QEvent, QProcess, QRect, QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QPainter, QPalette, QShortcut
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QPainter, QPalette, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
-	QProgressBar, QPushButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
+	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
 
 import civ, styles
+try:		# decoders need numpy; without it shack still runs, the Decoder row says why
+	import numpy as np
+	import decode
+	NODECODE = None
+except ImportError as e:
+	decode, NODECODE = None, str(e)
 
 HERE = Path(__file__).resolve().parent
 log = logging.getLogger('shack')		# set up in main by utils.setup_logging
@@ -45,6 +51,9 @@ HELP = '''
 <tr><td><b>Noise reduction</b></td><td>RNNoise, a neural network trained on speech: takes the hiss and noise floor out from under voice. Like SDRconnect's NR it won't dig very weak signals out of heavy noise, and it can chop up music and CW, so turn it off for those (it's off in WBFM). Digital out (the decoders) gets the audio before it</td></tr>
 <tr><td><b>Save</b></td><td>bookmarks frequency, mode and settings (or updates the bookmark already there)</td></tr>
 </table>
+
+<h3>Decoder (RSPdx)</h3>
+<p>Pick RTTY or CW: it turns Digital out on and decodes it (decode.py's decoders), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row or the text for RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, xara-monitor or nc first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -566,6 +575,246 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 # class Rspdx
 
 
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
+class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of controls (self.row) and the text they decode (self.text)
+	KINDS = ['Off', 'RTTY', 'CW']
+
+	'''-------------------------------------------------------------------
+		digi(): turns the radio's Digital out on
+	-------------------------------------------------------------------'''
+
+	def __init__(self, digi, port=7355):
+		self.digi, self.port = digi, port
+		self.sk, self.dec, self.heard = None, None, 0
+		self.kind, self.baud, self.shift, self.rev = 'RTTY', 1000 / 22, 170, False
+		self.sq = {'RTTY': 6, 'CW': 10}		# squelch dB per decoder
+		self.load()
+		self.pick = QComboBox(toolTip='Decode Digital out: RTTY or CW. Right-click for RTTY settings')
+		self.pick.addItems(self.KINDS)
+		self.pick.activated.connect(lambda i: self.start(self.pick.itemText(i)))
+		self.sql = QSpinBox(minimum=0, maximum=30, suffix=' dB', keyboardTracking=False, enabled=False, toolTip='Squelch: decodes when the signal is this far above the noise, stops 3 dB lower')
+		self.sql.valueChanged.connect(self.set_sq)
+		self.status = QLabel(NODECODE and f"can't decode: {NODECODE}" or '')
+		self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)		# changing text mustn't resize the window
+		self.row = QWidget(toolTip='Right-click: RTTY settings, Clear')
+		h = QHBoxLayout(self.row)
+		h.setContentsMargins(0, 0, 0, 0)
+		h.addWidget(self.pick)
+		h.addWidget(self.sql)
+		h.addWidget(self.status, 1)
+		self.text = QPlainTextEdit(readOnly=True, toolTip='Decoded text. Scroll up to read back; right-click for Clear and RTTY settings')
+		self.text.setMaximumBlockCount(500)
+		self.text.setFont(QFont('DejaVu Sans Mono', 11))
+		for w in (self.row, self.text):
+			w.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+			w.customContextMenuRequested.connect(lambda pos, w=w: self.menu(w, pos))
+		self.timer = QTimer(timeout=self.poll, interval=100)
+		return
+	# __init__
+
+	'''-------------------------------------------------------------------
+		Off, RTTY or CW from the combo; listens on the port and turns Digital out on
+	-------------------------------------------------------------------'''
+
+	def start(self, kind):
+		self.stop()
+		if kind == 'Off':
+			return
+		if not decode:
+			quiet(self.pick, self.pick.setCurrentIndex, 0)
+			return self.status.setText(f"can't decode: {NODECODE}")
+		self.sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		try:
+			self.sk.bind(('127.0.0.1', self.port))
+		except OSError as e:
+			self.sk.close()
+			self.sk = None
+			quiet(self.pick, self.pick.setCurrentIndex, 0)
+			return self.status.setText(f'UDP {self.port}: {e.strerror}. Is decode.py, xara-monitor or nc listening?')
+		self.sk.setblocking(False)
+		self.kind, self.heard = kind, time.monotonic()
+		self.make()
+		self.sql.setEnabled(True)
+		self.digi()
+		self.timer.start()
+		self.save()
+		return
+	# start
+
+	'''-------------------------------------------------------------------
+		a new decoder with the current settings, tuning itself
+	-------------------------------------------------------------------'''
+
+	def make(self):
+		if self.kind == 'RTTY':
+			self.dec = decode.Rtty(self.baud, self.shift, self.rev, None, self.sq['RTTY'])
+		else:
+			self.dec = decode.Cw(None, self.sq['CW'])
+		quiet(self.sql, self.sql.setValue, round(self.sq[self.kind]))
+		self.newline()
+		return
+	# make
+
+	'''-------------------------------------------------------------------
+		stop() keeps the combo as it is (start uses it); off() also sets it to Off, for closing the radio
+	-------------------------------------------------------------------'''
+
+	def stop(self):
+		self.timer.stop()
+		if self.sk:
+			self.sk.close()
+		self.sk, self.dec = None, None
+		self.sql.setEnabled(False)
+		self.status.setText('')
+		return
+	# stop
+
+	def off(self):
+		self.stop()
+		quiet(self.pick, self.pick.setCurrentIndex, 0)
+		return
+
+	'''-------------------------------------------------------------------
+		every 100 ms: decode whatever audio has arrived, then the status line
+	-------------------------------------------------------------------'''
+
+	def poll(self):
+		data = []
+		while True:
+			try:
+				data.append(self.sk.recv(4096))
+			except BlockingIOError:
+				break
+		if data:
+			self.heard = time.monotonic()
+			txt, new = self.dec(np.frombuffer(b''.join(data), '<i2') / 32768.0)
+			if new:
+				self.newline()
+			if txt:
+				self.add(txt)
+		tu = self.dec.tu
+		if time.monotonic() - self.heard > 1:
+			t = 'no audio: is Digital out on?'
+		else:
+			t = (f'{tu.center:.0f} Hz  {tu.snr:.0f} dB' if tu.center else '-- Hz') + ('  open  ' if self.dec.op else '  closed  ') + self.dec.info()
+		if self.kind == 'RTTY':
+			t = f'{self.bd(self.baud)} Bd  {self.shift} Hz{"  mark low" if self.rev else ""}    ' + t
+		self.status.setText(t)
+		return
+	# poll
+
+	def bd(self, b):
+		return '45.45' if b == 1000 / 22 else f'{b:g}'
+
+	'''-------------------------------------------------------------------
+		text at the end; follows it only if already at the bottom, so reading back isn't yanked away
+	-------------------------------------------------------------------'''
+
+	def add(self, txt):
+		sb = self.text.verticalScrollBar()
+		end = sb.value() >= sb.maximum() - 2
+		c = QTextCursor(self.text.document())
+		c.movePosition(QTextCursor.MoveOperation.End)
+		c.insertText(txt)
+		if end:
+			sb.setValue(sb.maximum())
+		return
+	# add
+
+	def newline(self):
+		if self.text.document().lastBlock().text():
+			self.add('\n')
+		return
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def set_sq(self, v):
+		self.sq[self.kind] = v
+		if self.dec:
+			self.dec.tu.sq = v
+		self.save()
+		return
+	# set_sq
+
+	'''-------------------------------------------------------------------
+		RTTY settings changed: a new decoder if RTTY is running
+	-------------------------------------------------------------------'''
+
+	def rtty(self, baud, shift, rev):
+		self.baud, self.shift, self.rev = baud, shift, rev
+		if self.dec and self.kind == 'RTTY':
+			self.make()
+		self.save()
+		return
+	# rtty
+
+	'''-------------------------------------------------------------------
+		right-click on the row or the text: RTTY settings, Clear (the text also gets Copy, Select all)
+	-------------------------------------------------------------------'''
+
+	def menu(self, w, pos):
+		m = self.text.createStandardContextMenu() if w is self.text else QMenu(w)
+		if w is self.text:
+			m.addSeparator()
+		r = m.addMenu('RTTY')
+		if decode:
+			for name, b, s, rev in decode.PRESETS:
+				self.check(r, f'{name}: {self.bd(b)} Bd, {s} Hz' + (', mark low' if rev else ''), (b, s, rev) == (self.baud, self.shift, self.rev), lambda on, p=(b, s, rev): self.rtty(*p))
+			r.addSeparator()
+			bm, sm = r.addMenu('Baud'), r.addMenu('Shift')
+			for b in decode.BAUDS:
+				self.check(bm, self.bd(b), b == self.baud, lambda on, b=b: self.rtty(b, self.shift, self.rev))
+			for s in decode.SHIFTS:
+				self.check(sm, f'{s} Hz', s == self.shift, lambda on, s=s: self.rtty(self.baud, s, self.rev))
+			self.check(r, 'Mark low (reverse)', self.rev, lambda on: self.rtty(self.baud, self.shift, on))
+		a = m.addAction('Clear')
+		a.triggered.connect(self.text.clear)
+		m.exec(w.mapToGlobal(pos))
+		return
+	# menu
+
+	def check(self, menu, text, on, f):		# a ticked or unticked menu item
+		a = menu.addAction(text)
+		a.setCheckable(True)
+		a.setChecked(on)
+		a.triggered.connect(f)
+		return
+
+	'''-------------------------------------------------------------------
+		settings shared with decode.py's own UI (decode.json)
+	-------------------------------------------------------------------'''
+
+	def load(self):
+		if not decode:
+			return
+		try:
+			c = json.load(open(decode.CONF))
+			self.kind = c['kind'] if c['kind'] in self.sq else self.kind
+			self.baud, self.shift, self.rev = float(c['baud']), int(c['shift']), bool(c['rev'])
+			self.sq.update({k: float(v) for k, v in c['sq'].items() if k in self.sq})
+		except (OSError, ValueError, KeyError, TypeError, AttributeError):
+			pass
+		return
+	# load
+
+	def save(self):
+		if not decode:
+			return
+		try:
+			with open(decode.CONF, 'w') as f:
+				json.dump({'kind': self.kind, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq}, f)
+		except OSError as e:
+			log.error(f'decoder settings: {e}')
+		return
+	# save
+
+# class Decoders
+
+
 '''-------------------------------------------------------------------
 -------------------------------------------------------------------'''
 
@@ -681,7 +930,8 @@ class Shack(QMainWindow):
 		self.bms.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.bms.customContextMenuRequested.connect(self.bm_menu)
 		self.bmlist = []
-		self.rsp = (self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
+		self.dec = Decoders(lambda: self.rig and self.rig.set('digi', True))
+		self.rsp = (self.dec.row, self.dec.text, self.ifr,self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
 		self.tx = QLabel('RX')
@@ -720,7 +970,13 @@ class Shack(QMainWindow):
 		more.addStretch()
 		row += 1
 		g.addLayout(more, row, 0, 1, 3)
-		g.setRowStretch(row + 1, 1)		# spare height goes below the rows, not into them
+		row += 1
+		self.labels[self.dec.row] = QLabel('Decoder')
+		g.addWidget(self.labels[self.dec.row], row, 0)
+		g.addWidget(self.dec.row, row, 1, 1, 2)
+		row += 1
+		g.addWidget(self.dec.text, row, 0, 1, 3)
+		g.setRowStretch(row, 1)		# spare height goes to the decoded text (or below the rows when it's hidden)
 		box = QWidget()
 		box.setLayout(g)
 		main = QHBoxLayout()
@@ -829,6 +1085,7 @@ class Shack(QMainWindow):
 
 	def shut(self):
 		self.ptt_limit.stop()
+		self.dec.off()
 		if self.rig:
 			if isinstance(self.rig, Rspdx) and self.rig.ok:		# start here next time
 				self.bm.set_last('RSPdx', round(self.rig.state['mhz'] * 1e6), self.rig.state['mode'].upper(), self.rig.settings())
