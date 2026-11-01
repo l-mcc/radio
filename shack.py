@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, logging, socket, sqlite3, sys, time
+import argparse, json, logging, shutil, socket, sqlite3, sys, time
 from pathlib import Path
 
 import serial
@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder (RSPdx)</h3>
-<p>Pick RTTY or CW: it turns Digital out on and decodes it (decode.py's decoders), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, xara-monitor or nc first.</p>
+<p>Pick RTTY, CW or VARA: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -626,12 +626,16 @@ class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: 
 		edges = np.linspace(decode.F0, decode.F1, w + 1) / tu.df		# bins under each pixel column
 		db = tu.db(tu.avg[:int(edges[-1]) + 1])
 		col = np.maximum.reduceat(db, edges[:-1].astype(int))		# loudest bin in each column
+		band = getattr(d, 'band', None)		# VARA: its bandwidth, shaded
+		if band:
+			p.fillRect(QRect(self.px(band[0]), 0, self.px(band[1]) - self.px(band[0]), h), QColor(32, 160, 32, 40))
 		pts = [QPointF(0, h)] + [QPointF(i, y(v)) for i, v in enumerate(col)] + [QPointF(w, h)]
 		p.setPen(Qt.PenStyle.NoPen)
 		p.setBrush(QColor('#3a7bd5'))
 		p.drawPolygon(QPolygonF(pts))
-		p.setPen(QPen(QColor('#606060'), 1, Qt.PenStyle.DashLine))
-		p.drawLine(0, round(y(tu.sq)), w, round(y(tu.sq)))
+		if tu.sq <= self.TOP:
+			p.setPen(QPen(QColor('#606060'), 1, Qt.PenStyle.DashLine))
+			p.drawLine(0, round(y(tu.sq)), w, round(y(tu.sq)))
 		if tu.center:
 			sh = getattr(d, 'shift', 0)
 			p.setPen(QPen(QColor('#20a020' if d.op else '#e08000'), 2))
@@ -668,8 +672,92 @@ class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: 
 
 ==================================================================================================================================================='''
 
-class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
-	KINDS = ['Off', 'RTTY', 'CW']
+class Vara:		# VARA HF: xara-monitor (a child process) decodes; this feeds it the audio and keeps a spectrum for the strip. Same face as decode.Rtty / Cw
+	PLACES = (shutil.which('xara-monitor'), str(Path.home() / 'installed/builds/xara/target/release/xara-monitor'))		# first that exists
+
+	'''-------------------------------------------------------------------
+		add(text): decoded lines go to the box; gone(why): xara-monitor stopped by itself
+	-------------------------------------------------------------------'''
+
+	def __init__(self, path, hf, add, gone):
+		self.add, self.gone, self.hf = add, gone, hf
+		self.tu = decode.Tuner(None, 99, 0, 4)		# spectrum only; a 99 dB squelch never picks a signal
+		self.op, self.last = False, ''		# last: xara-monitor's last stderr line
+		self.band = (1500 - hf / 2, 1500 + hf / 2)		# where VARA sits in the audio, shaded on the strip
+		self.p = QProcess()
+		self.p.readyReadStandardOutput.connect(self.out)
+		self.p.readyReadStandardError.connect(self.err)
+		self.p.finished.connect(self.ended)
+		self.p.errorOccurred.connect(lambda e: e == QProcess.ProcessError.FailedToStart and self.gone(f"couldn't run {path}: {self.p.errorString()}"))
+		self.p.start(path, ['--stdin', '48000', '--hf', str(hf)])
+		return
+	# __init__
+
+	@classmethod
+	def path(cls):
+		return next((p for p in cls.PLACES if p and Path(p).is_file()), None)
+
+	'''-------------------------------------------------------------------
+		audio in: to the spectrum and to xara-monitor's stdin as s16le
+	-------------------------------------------------------------------'''
+
+	def __call__(self, x):
+		self.tu(x)
+		if self.p.state() == QProcess.ProcessState.Running:
+			self.p.write((np.clip(x, -1, 1) * 32767).astype('<i2').tobytes())
+		return '', False
+	# __call__
+
+	def info(self):
+		return ''
+
+	def tune(self, f):		# VARA sits at 1500 Hz; nothing to tune
+		return
+
+	'''-------------------------------------------------------------------
+		xara-monitor's stdout: decoded lines; stderr: its banner and errors, to shack.log
+	-------------------------------------------------------------------'''
+
+	def out(self):
+		while self.p.canReadLine():
+			self.add(bytes(self.p.readLine()).decode(errors='replace').rstrip() + '\n')
+		return
+	# out
+
+	def err(self):
+		for line in bytes(self.p.readAllStandardError()).decode(errors='replace').splitlines():
+			if line.strip():
+				self.last = line.strip()
+				log.info(f'xara-monitor: {self.last}')
+		return
+	# err
+
+	def ended(self, code, status):
+		self.gone(f'xara-monitor stopped: {self.last or "exit " + str(code)} (see shack.log)')
+		return
+
+	'''-------------------------------------------------------------------
+		EOF on its stdin is xara-monitor's cue to finish
+	-------------------------------------------------------------------'''
+
+	def close(self):
+		self.p.finished.disconnect(self.ended)
+		self.p.closeWriteChannel()
+		if not self.p.waitForFinished(2000):
+			self.p.kill()
+			self.p.waitForFinished(1000)
+		return
+	# close
+
+# class Vara
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
+class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
+	KINDS = ['Off', 'RTTY', 'CW', 'VARA']
 
 	'''-------------------------------------------------------------------
 		digi(): turns the radio's Digital out on
@@ -680,21 +768,22 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 		self.sk, self.dec, self.heard = None, None, 0
 		self.kind, self.baud, self.shift, self.rev = 'RTTY', 1000 / 22, 170, False
 		self.sq = {'RTTY': 6, 'CW': 10}		# squelch dB per decoder
+		self.hf = 2300		# VARA bandwidth
 		self.load()
-		self.pick = QComboBox(toolTip='Decode Digital out: RTTY or CW. Right-click for RTTY settings')
+		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW or VARA. Right-click for settings')
 		self.pick.addItems(self.KINDS)
 		self.pick.activated.connect(lambda i: self.start(self.pick.itemText(i)))
 		self.sql = QSpinBox(minimum=0, maximum=30, suffix=' dB', keyboardTracking=False, enabled=False, toolTip='Squelch: decodes when the signal is this far above the noise, stops 3 dB lower')
 		self.sql.valueChanged.connect(self.set_sq)
 		self.status = QLabel(NODECODE and f"can't decode: {NODECODE}" or '')
 		self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)		# changing text mustn't resize the window
-		self.row = QWidget(toolTip='Right-click: RTTY settings, Clear')
+		self.row = QWidget(toolTip='Right-click: Auto tune, RTTY and VARA settings, Clear')
 		h = QHBoxLayout(self.row)
 		h.setContentsMargins(0, 0, 0, 0)
 		h.addWidget(self.pick)
 		h.addWidget(self.sql)
 		h.addWidget(self.status, 1)
-		self.text = QPlainTextEdit(readOnly=True, toolTip='Decoded text. Scroll up to read back; right-click for Clear and RTTY settings')
+		self.text = QPlainTextEdit(readOnly=True, toolTip='Decoded text. Scroll up to read back; right-click for Clear and settings')
 		self.text.setMaximumBlockCount(500)
 		self.text.setFont(QFont('DejaVu Sans Mono', 11))
 		self.spec = Spectrum(self)
@@ -706,7 +795,7 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 	# __init__
 
 	'''-------------------------------------------------------------------
-		Off, RTTY or CW from the combo; listens on the port and turns Digital out on
+		Off, RTTY, CW or VARA from the combo; listens on the port and turns Digital out on
 	-------------------------------------------------------------------'''
 
 	def start(self, kind):
@@ -716,6 +805,9 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 		if not decode:
 			quiet(self.pick, self.pick.setCurrentIndex, 0)
 			return self.status.setText(f"can't decode: {NODECODE}")
+		if kind == 'VARA' and not Vara.path():
+			quiet(self.pick, self.pick.setCurrentIndex, 0)
+			return self.status.setText("can't find xara-monitor (on the PATH or in ~/installed/builds/xara/target/release)")
 		self.sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		try:
 			self.sk.bind(('127.0.0.1', self.port))
@@ -725,9 +817,10 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 			quiet(self.pick, self.pick.setCurrentIndex, 0)
 			return self.status.setText(f'UDP {self.port}: {e.strerror}. Is decode.py, xara-monitor or nc listening?')
 		self.sk.setblocking(False)
+		self.sk.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)		# room for a few seconds of audio if the window stalls (the kernel may cap it)
 		self.kind, self.heard = kind, time.monotonic()
 		self.make()
-		self.sql.setEnabled(True)
+		self.sql.setEnabled(kind != 'VARA')		# xara-monitor has no squelch
 		self.digi()
 		self.timer.start()
 		self.save()
@@ -739,6 +832,11 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 	-------------------------------------------------------------------'''
 
 	def make(self, center=None):		# center: stay locked there; None = tune itself
+		if self.kind == 'VARA':
+			v = Vara(Vara.path(), self.hf, self.add, self.died)
+			if self.sk:		# still on: a failed start has already turned it off
+				self.dec = v
+			return self.newline()
 		if self.kind == 'RTTY':
 			self.dec = decode.Rtty(self.baud, self.shift, self.rev, center, self.sq['RTTY'])
 		else:
@@ -754,6 +852,8 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 
 	def stop(self):
 		self.timer.stop()
+		if isinstance(self.dec, Vara):
+			self.dec.close()
 		if self.sk:
 			self.sk.close()
 		self.sk, self.dec = None, None
@@ -766,6 +866,12 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 	def off(self):
 		self.stop()
 		quiet(self.pick, self.pick.setCurrentIndex, 0)
+		return
+
+	def died(self, why):		# xara-monitor stopped by itself
+		self.dec = None		# already gone, nothing to close
+		self.off()
+		self.status.setText(why)
 		return
 
 	'''-------------------------------------------------------------------
@@ -789,6 +895,8 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 		tu = self.dec.tu
 		if time.monotonic() - self.heard > 1:
 			t = 'no audio: is Digital out on?'
+		elif self.kind == 'VARA':
+			t = f'{self.hf} Hz   xara-monitor listening'
 		else:
 			t = ('locked  ' if tu.fixed else 'auto  ') + (f'{tu.center:.0f} Hz  {tu.snr:.0f} dB' if tu.center else '-- Hz') + ('  open  ' if self.dec.op else '  closed  ') + self.dec.info()
 		if self.kind == 'RTTY':
@@ -833,6 +941,19 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 	# set_sq
 
 	'''-------------------------------------------------------------------
+		VARA bandwidth changed: a new xara-monitor if VARA is running
+	-------------------------------------------------------------------'''
+
+	def vara(self, hf):
+		self.hf = hf
+		if isinstance(self.dec, Vara):
+			self.dec.close()
+			self.make()
+		self.save()
+		return
+	# vara
+
+	'''-------------------------------------------------------------------
 		RTTY settings changed: a new decoder if RTTY is running
 	-------------------------------------------------------------------'''
 
@@ -845,7 +966,7 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 	# rtty
 
 	'''-------------------------------------------------------------------
-		right-click on the row, the strip or the text: Auto tune, RTTY settings, Clear (the text also gets Copy, Select all)
+		right-click on the row, the strip or the text: Auto tune, RTTY and VARA settings, Clear (the text also gets Copy, Select all)
 	-------------------------------------------------------------------'''
 
 	def menu(self, w, pos):
@@ -853,7 +974,7 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 		if w is self.text:
 			m.addSeparator()
 		d = self.dec
-		if d:		# ticked = following the strongest signal; unticking locks where it is
+		if d and not isinstance(d, Vara):		# ticked = following the strongest signal; unticking locks where it is
 			self.check(m, 'Auto tune', not d.tu.fixed, lambda on: d.tune(None if on else d.tu.center))
 		r = m.addMenu('RTTY')
 		if decode:
@@ -866,6 +987,9 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 			for s in decode.SHIFTS:
 				self.check(sm, f'{s} Hz', s == self.shift, lambda on, s=s: self.rtty(self.baud, s, self.rev))
 			self.check(r, 'Mark low (reverse)', self.rev, lambda on: self.rtty(self.baud, self.shift, on))
+		v = m.addMenu('VARA')
+		for hf in (500, 2300, 2750):
+			self.check(v, f'{hf} Hz', hf == self.hf, lambda on, hf=hf: self.vara(hf))
 		a = m.addAction('Clear')
 		a.triggered.connect(self.text.clear)
 		m.exec(w.mapToGlobal(pos))
@@ -891,6 +1015,7 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 			self.kind = c['kind'] if c['kind'] in self.sq else self.kind
 			self.baud, self.shift, self.rev = float(c['baud']), int(c['shift']), bool(c['rev'])
 			self.sq.update({k: float(v) for k, v in c['sq'].items() if k in self.sq})
+			self.hf = int(c.get('hf', self.hf))
 		except (OSError, ValueError, KeyError, TypeError, AttributeError):
 			pass
 		return
@@ -901,7 +1026,7 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 			return
 		try:
 			with open(decode.CONF, 'w') as f:
-				json.dump({'kind': self.kind, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq}, f)
+				json.dump({'kind': self.kind, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf}, f)
 		except OSError as e:
 			log.error(f'decoder settings: {e}')
 		return
