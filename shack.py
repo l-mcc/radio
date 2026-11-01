@@ -688,6 +688,7 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 		self.op, self.last = False, ''		# last: its last stderr line
 		self.hush = kind == 'Packet'		# direwolf talks a lot before its first packet (VOX advice...): shack.log until then
 		self.drop = ()		# line starts not to show at all
+		self.gain = 1.0		# on the audio it gets
 		self.p = QProcess()
 		self.p.readyReadStandardOutput.connect(self.out)
 		self.p.readyReadStandardError.connect(self.err)
@@ -709,7 +710,7 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 	def __call__(self, x):
 		self.tu(x)
 		if self.p.state() == QProcess.ProcessState.Running:
-			self.p.write((np.clip(x, -1, 1) * 32767).astype('<i2').tobytes())
+			self.p.write((np.clip(x * self.gain, -1, 1) * 32767).astype('<i2').tobytes())
 		return '', False
 	# __call__
 
@@ -856,6 +857,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 			else:
 				h = Helper('Packet', ['-c', self.dwconf(), '-t', '0'], self.PACKET[self.pk], self.add, self.died)
 				h.drop = self.NAGS if self.hide else ()
+				h.gain = 0.5		# Digital out arrives at direwolf's 'audio level' 70-100; it wants about 50 (above that it warns of distortion)
 			if self.sk:		# still on: a failed start has already turned it off
 				self.dec = h
 			return self.newline()
