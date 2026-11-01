@@ -140,6 +140,24 @@ class Uart:	# async 1 start, 5 data, 1.5 stop on soft bits (>0 mark)
 		s.i = i
 		return out
 
+class Atc:	# per-tone envelope and floor, as fldigi: when fading takes one tone down, the other still decides against its own level
+	def __init__(s, spb):
+		s.fast, s.slow, s.nslow = spb / 4, spb * 16, spb * 48	# time constants, samples
+		s.me = s.se = s.mn = s.sn = 0.0	# mark, space envelope; mark, space floor
+	def __call__(s, m, sp):	# tone envelopes -> soft bits, >0 mark
+		out = np.empty(len(m))
+		me, se, mn, sn, fast, slow, nslow = s.me, s.se, s.mn, s.sn, s.fast, s.slow, s.nslow
+		for i in range(len(m)):
+			a, b = m[i], sp[i]
+			me += (a - me) / (fast if a > me else slow)	# envelope: quick up, slow down
+			se += (b - se) / (fast if b > se else slow)
+			mn += (a - mn) / (fast if a < mn else nslow)	# floor: quick down, slow up
+			sn += (b - sn) / (fast if b < sn else nslow)
+			a, b = min(max(a, mn), me), min(max(b, sn), se)
+			out[i] = (a - mn) * (me - mn) - (b - sn) * (se - sn) - 0.25 * ((me - mn) ** 2 - (se - sn) ** 2)
+		s.me, s.se, s.mn, s.sn = me, se, mn, sn
+		return out
+
 class Baudot:
 	def __init__(s):
 		s.figs = False
@@ -161,7 +179,7 @@ class Rtty:	# decoder(x) -> (text, new station)
 		pol = -1 if rev else 1
 		s.mm, s.ms = Mixer(pol * shift / 2, FS2), Mixer(-pol * shift / 2, FS2)
 		s.lpm, s.lps = Fir(lowpass(0.75 * baud, FS2, 57)), Fir(lowpass(0.75 * baud, FS2, 57))
-		s.uart, s.bd = Uart(FS2 / baud), Baudot()
+		s.uart, s.bd, s.atc = Uart(FS2 / baud), Baudot(), Atc(FS2 / baud)
 		s.hm = s.hs = np.zeros(0)	# last 2 s of tone envelopes
 		s.op, s.said, s.k = False, None, 0.0
 	def tune(s, f):	# None = auto
@@ -186,7 +204,7 @@ class Rtty:	# decoder(x) -> (text, new station)
 		bb = s.lp1(s.mix(x))
 		m, sp = np.abs(s.lpm(s.mm(bb))), np.abs(s.lps(s.ms(bb)))
 		s.hm, s.hs = np.concatenate((s.hm, m))[-2 * FS2:], np.concatenate((s.hs, sp))[-2 * FS2:]
-		txt = ''.join(s.bd(c) for c in s.uart((m - sp) / (m + sp + 1e-9)))
+		txt = ''.join(s.bd(c) for c in s.uart(s.atc(m, sp)))
 		return (txt if s.op else ''), new
 
 class Keyer:	# envelope -> marks and spaces -> text, adapts to speed
