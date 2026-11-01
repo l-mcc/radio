@@ -52,8 +52,8 @@ HELP = '''
 <tr><td><b>Save</b></td><td>bookmarks frequency, mode and settings (or updates the bookmark already there)</td></tr>
 </table>
 
-<h3>Decoder (RSPdx)</h3>
-<p>Pick RTTY, CW, VARA, Packet or JS8: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; Off and closing shack leave it running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<h3>Decoder</h3>
+<p>Pick RTTY, CW, VARA, Packet or JS8. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; Off and closing shack leave it running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -783,6 +783,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 
 	def __init__(self, digi, port=7355):
 		self.digi, self.port = digi, port
+		self.alsa = None		# the open radio's USB sound card (ALSA name); None = the RSPdx's Digital out on UDP
+		self.rec, self.carry, self.last = None, b'', ''		# arecord reading it; half a sample left over; arecord's last stderr line
 		self.sk, self.dec, self.heard = None, None, 0
 		self.kind, self.baud, self.shift, self.rev = 'RTTY', 1000 / 22, 170, False
 		self.sq = {'RTTY': 6, 'CW': 10}		# squelch dB per decoder
@@ -817,7 +819,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 	# __init__
 
 	'''-------------------------------------------------------------------
-		Off, RTTY, CW, VARA, Packet or JS8 from the combo; listens on the port and turns Digital out on
+		Off, RTTY, CW, VARA, Packet or JS8 from the combo; RSPdx: listens on the port and turns Digital out on; CI-V radio: records its USB sound card
 	-------------------------------------------------------------------'''
 
 	def start(self, kind):
@@ -831,16 +833,10 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			quiet(self.pick, self.pick.setCurrentIndex, 0)
 			name, alt = Helper.PROGRAMS[kind]
 			return self.status.setText(f"can't find {name} (on the PATH or at {alt})")
-		self.sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		try:
-			self.sk.bind(('127.0.0.1', self.port))
-		except OSError as e:
-			self.sk.close()
-			self.sk = None
-			quiet(self.pick, self.pick.setCurrentIndex, 0)
-			return self.status.setText(f'UDP {self.port}: {e.strerror}. Is decode.py, xara-monitor or nc listening?')
-		self.sk.setblocking(False)
-		self.sk.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)		# room for a few seconds of audio if the window stalls (the kernel may cap it)
+		why = self.record() if self.alsa else self.bind()
+		if why:
+			self.off()
+			return self.status.setText(why)
 		if kind == 'JS8':
 			why = self.js8open()
 			if why:
@@ -856,6 +852,45 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 	# start
 
 	'''-------------------------------------------------------------------
+		the audio: the RSPdx's Digital out on UDP, or arecord on a CI-V radio's USB sound card. return why not, or None
+	-------------------------------------------------------------------'''
+
+	def bind(self):
+		self.sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		try:
+			self.sk.bind(('127.0.0.1', self.port))
+		except OSError as e:
+			return f'UDP {self.port}: {e.strerror}. Is decode.py, xara-monitor or nc listening?'
+		self.sk.setblocking(False)
+		self.sk.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)		# room for a few seconds of audio if the window stalls (the kernel may cap it)
+		return None
+	# bind
+
+	def record(self):
+		self.rec, self.carry, self.last = QProcess(), b'', ''
+		self.rec.readyReadStandardError.connect(self.recerr)
+		self.rec.finished.connect(self.recended)
+		self.rec.start('arecord', ['-q', '-D', self.alsa, '-f', 'S16_LE', '-r', '48000', '-c', '1', '-t', 'raw'])
+		if not self.rec.waitForStarted(2000):
+			return f"couldn't run arecord: {self.rec.errorString()}"
+		return None
+	# record
+
+	def recerr(self):
+		for line in bytes(self.rec.readAllStandardError()).decode(errors='replace').splitlines():
+			if line.strip():
+				self.last = line.strip()
+				log.info(f'arecord: {self.last}')
+		return
+
+	def recended(self, code, status):		# by itself: the card is busy or gone
+		self.recerr()
+		self.rec = None		# already gone
+		self.off()		# and whatever decoder program was running
+		self.status.setText(f"arecord stopped: {self.last or 'exit ' + str(code)}. Radio's USB audio {self.alsa} plugged in? Another program using it?")
+		return
+
+	'''-------------------------------------------------------------------
 		a new decoder with the current settings
 	-------------------------------------------------------------------'''
 
@@ -869,7 +904,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 				h = Helper('Packet', ['-c', self.dwconf(), '-t', '0'], self.PACKET[self.pk], self.add, self.died)
 				h.drop = self.NAGS if self.hide else ()
 				h.gain = 0.5		# Digital out arrives at direwolf's 'audio level' 70-100; it wants about 50 (above that it warns of distortion)
-			if self.sk:		# still on: a failed start has already turned it off
+			if self.sk or self.rec:		# still on: a failed start has already turned it off
 				self.dec = h
 			return self.newline()
 		if self.kind == 'RTTY':
@@ -887,6 +922,11 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 
 	def stop(self):
 		self.timer.stop()
+		if self.rec:
+			self.rec.finished.disconnect(self.recended)
+			self.rec.kill()
+			self.rec.waitForFinished(1000)
+			self.rec = None
 		if isinstance(self.dec, Helper):
 			self.dec.close()
 		if self.sk:
@@ -916,15 +956,21 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 	-------------------------------------------------------------------'''
 
 	def poll(self):
-		data = []
-		while True:
-			try:
-				data.append(self.sk.recv(4096))
-			except BlockingIOError:
-				break
-		if data:
+		if self.rec:		# arecord's output, whole samples
+			b = self.carry + bytes(self.rec.readAllStandardOutput())
+			n = len(b) & ~1
+			raw, self.carry = b[:n], b[n:]
+		else:
+			data = []
+			while True:
+				try:
+					data.append(self.sk.recv(4096))
+				except BlockingIOError:
+					break
+			raw = b''.join(data)
+		if raw:
 			self.heard = time.monotonic()
-			txt, new = self.dec(np.frombuffer(b''.join(data), '<i2') / 32768.0)
+			txt, new = self.dec(np.frombuffer(raw, '<i2') / 32768.0)
 			if new:
 				self.newline()
 			if txt:
@@ -933,7 +979,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			self.js8in()
 		tu = self.dec.tu
 		if time.monotonic() - self.heard > 1:
-			t = 'no audio: is Digital out on?'
+			t = f'no audio from {self.alsa}' if self.alsa else 'no audio: is Digital out on?'
 		elif self.kind == 'VARA':
 			t = f'{self.hf} Hz   xara-monitor listening'
 		elif self.kind == 'Packet':
@@ -1316,7 +1362,7 @@ class Shack(QMainWindow):
 		self.bms.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.bms.customContextMenuRequested.connect(self.bm_menu)
 		self.bmlist = []
-		self.dec = Decoders(lambda: self.rig and self.rig.set('digi', True))
+		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
 		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
@@ -1421,7 +1467,9 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.save, self.bms))		# nb, nr: the radio's own, on/off
+		self.dec.alsa = r['audio']		# decoders read the radio's USB sound card
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.save, self.bms,
+			self.dec.row, self.dec.spec, self.dec.text))		# nb, nr: the radio's own, on/off
 		self.levels()
 		self.tx_band(0)		# no PTT until the radio says where it is
 		self.show_bms()
@@ -1438,6 +1486,7 @@ class Shack(QMainWindow):
 			return self.oops(f"Can't find rspdx at {self.a.rspdx}.\n\nIs it built? (./build.sh)")
 		self.rig = Rspdx(self.a.rspdx, self.got.emit, self.bm.last('RSPdx'))
 		self.smeter.setRange(-100, -40)		# the TUI's signal scale, dBFS in the passband
+		self.dec.alsa = None		# decoders read Digital out
 		self.show_radio('RSPdx', Rspdx.MODES, 2000, (self.freq, self.mode, self.vol, self.smeter, *self.rsp))		# no PTT on a receiver
 		self.show_bms()
 		return
