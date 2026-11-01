@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder (RSPdx)</h3>
-<p>Pick RTTY, CW, VARA, Packet or JS8: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; Off and closing shack leave it running): shack plays Digital out into a sound device of its own, shack-JS8, and shows each frame JS8Call decodes (UTC, SNR, offset, text). Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, VARA, Packet or JS8: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; Off and closing shack leave it running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -790,6 +790,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		self.pk = 300		# packet baud
 		self.hide = True		# hide direwolf's complaints about non-APRS packets
 		self.api, self.js8 = None, None		# JS8: socket JS8Call's API sends to; (when it last pinged, its version)
+		self.lines = {}		# JS8: offset Hz: (cursor at the start of that message's line, when its last frame came, the line's start); a message's frames join one line
 		self.load()
 		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, VARA, packet or JS8 (through JS8Call). Right-click for settings')
 		self.pick.addItems(self.KINDS)
@@ -892,7 +893,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			self.sk.close()
 		if self.api:
 			self.api.close()
-		self.sk, self.dec, self.api, self.js8 = None, None, None, None
+		self.sk, self.dec, self.api, self.js8, self.lines = None, None, None, None, {}
 		self.sql.setEnabled(False)
 		self.status.setText('')
 		self.spec.update()
@@ -1071,10 +1072,35 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			elif kind == 'CLOSE':
 				self.js8 = None
 			elif kind == 'RX.ACTIVITY':
-				utc = time.strftime('%H:%M:%S', time.gmtime(p.get('UTC', 0) / 1000))
-				self.add(f"{utc}  {p.get('SNR', 0):+3d} dB  {p.get('OFFSET', 0):4d} Hz  {m.get('value', '').strip()}\n")
+				self.frame(p.get('OFFSET', 0), p.get('SNR', 0), p.get('UTC', 0), m.get('value', '').strip())
 		return
 	# js8in
+
+	'''-------------------------------------------------------------------
+		one JS8 frame: joins the open line at its offset (within 10 Hz, its last frame less than a minute ago) like JS8Call's
+		Band Activity, or starts a line 'UTC  SNR  offset  text'. The end-of-message mark closes the line
+	-------------------------------------------------------------------'''
+
+	def frame(self, off, snr, utc, text):
+		now = time.monotonic()
+		self.lines = {o: v for o, v in self.lines.items() if now - v[1] < 60}
+		hit = next((o for o in self.lines if abs(o - off) <= 10), None)
+		c, head = self.lines.pop(hit)[0::2] if hit is not None else (None, None)		# c: start of the line; text added at the end of the box doesn't move it
+		if c and c.block().text().startswith(head):		# still that line (not dropped off the top of the box)
+			e = QTextCursor(c)
+			e.movePosition(QTextCursor.MoveOperation.EndOfBlock)
+			e.insertText(' ' + text)
+		else:
+			self.newline()
+			head = f"{time.strftime('%H:%M:%S', time.gmtime(utc / 1000))}  {snr:+3d} dB  {off:4d} Hz  "
+			self.add(head + text)
+			c = QTextCursor(self.text.document())
+			c.movePosition(QTextCursor.MoveOperation.End)
+			c.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+		if not text.endswith('\u2662'):		# ♢: the message is complete
+			self.lines[off] = (c, now, head)
+		return
+	# frame
 
 	'''-------------------------------------------------------------------
 		direwolf's config, written fresh each start: audio from stdin, nothing out, no network ports or announcing (nothing to clash with)
