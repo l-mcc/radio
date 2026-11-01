@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, logging, shutil, socket, sqlite3, sys, time
+import argparse, json, logging, shutil, socket, sqlite3, sys, tempfile, time
 from pathlib import Path
 
 import serial
@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder (RSPdx)</h3>
-<p>Pick RTTY, CW or VARA: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, VARA or Packet: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it, and non-APRS ones an 'Unknown APRS Data Type' line you can ignore. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -626,7 +626,7 @@ class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: 
 		edges = np.linspace(decode.F0, decode.F1, w + 1) / tu.df		# bins under each pixel column
 		db = tu.db(tu.avg[:int(edges[-1]) + 1])
 		col = np.maximum.reduceat(db, edges[:-1].astype(int))		# loudest bin in each column
-		band = getattr(d, 'band', None)		# VARA: its bandwidth, shaded
+		band = getattr(d, 'band', None)		# VARA, packet: the audio they decode, shaded
 		if band:
 			p.fillRect(QRect(self.px(band[0]), 0, self.px(band[1]) - self.px(band[0]), h), QColor(32, 160, 32, 40))
 		pts = [QPointF(0, h)] + [QPointF(i, y(v)) for i, v in enumerate(col)] + [QPointF(w, h)]
@@ -672,33 +672,36 @@ class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: 
 
 ==================================================================================================================================================='''
 
-class Vara:		# VARA HF: xara-monitor (a child process) decodes; this feeds it the audio and keeps a spectrum for the strip. Same face as decode.Rtty / Cw
-	PLACES = (shutil.which('xara-monitor'), str(Path.home() / 'installed/builds/xara/target/release/xara-monitor'))		# first that exists
+class Helper:		# a decoder program run as a child: Digital out goes to its stdin, its lines to the text box (xara-monitor for VARA, direwolf for packet). Same face as decode.Rtty / Cw
+	PROGRAMS = {'VARA': ('xara-monitor', '~/installed/builds/xara/target/release/xara-monitor'), 'Packet': ('direwolf', '~/installed/builds/direwolf/build/src/direwolf')}		# kind: (name on the PATH, where else to look)
+	CHATTER = ('Dire Wolf', 'Includes optional', 'Reading config', 'Audio input', 'Audio out', 'Channel 0:', 'Note: PTT', 'Disabled', 'Running this as root', 'End of file')		# direwolf's start-up and exit lines: shack.log only
 
 	'''-------------------------------------------------------------------
-		add(text): decoded lines go to the box; gone(why): xara-monitor stopped by itself
+		args: the program's options; band: (Hz, Hz) of audio it decodes, shaded on the strip
+		add(text): lines to the box; gone(why): it stopped by itself
 	-------------------------------------------------------------------'''
 
-	def __init__(self, path, hf, add, gone):
-		self.add, self.gone, self.hf = add, gone, hf
+	def __init__(self, kind, args, band, add, gone):
+		path = self.find(kind)
+		self.name, self.band, self.add, self.gone = self.PROGRAMS[kind][0], band, add, gone
 		self.tu = decode.Tuner(None, 99, 0, 4)		# spectrum only; a 99 dB squelch never picks a signal
-		self.op, self.last = False, ''		# last: xara-monitor's last stderr line
-		self.band = (1500 - hf / 2, 1500 + hf / 2)		# where VARA sits in the audio, shaded on the strip
+		self.op, self.last = False, ''		# last: its last stderr line
 		self.p = QProcess()
 		self.p.readyReadStandardOutput.connect(self.out)
 		self.p.readyReadStandardError.connect(self.err)
 		self.p.finished.connect(self.ended)
 		self.p.errorOccurred.connect(lambda e: e == QProcess.ProcessError.FailedToStart and self.gone(f"couldn't run {path}: {self.p.errorString()}"))
-		self.p.start(path, ['--stdin', '48000', '--hf', str(hf)])
+		self.p.start(path, args)
 		return
 	# __init__
 
 	@classmethod
-	def path(cls):
-		return next((p for p in cls.PLACES if p and Path(p).is_file()), None)
+	def find(cls, kind):		# path of the program, None if it isn't there
+		name, alt = cls.PROGRAMS[kind]
+		return next((p for p in (shutil.which(name), str(Path(alt).expanduser())) if p and Path(p).is_file()), None)
 
 	'''-------------------------------------------------------------------
-		audio in: to the spectrum and to xara-monitor's stdin as s16le
+		audio in: to the spectrum and to the program's stdin as s16le
 	-------------------------------------------------------------------'''
 
 	def __call__(self, x):
@@ -711,16 +714,20 @@ class Vara:		# VARA HF: xara-monitor (a child process) decodes; this feeds it th
 	def info(self):
 		return ''
 
-	def tune(self, f):		# VARA sits at 1500 Hz; nothing to tune
+	def tune(self, f):		# the program finds the signal itself
 		return
 
 	'''-------------------------------------------------------------------
-		xara-monitor's stdout: decoded lines; stderr: its banner and errors, to shack.log
+		stdout: decoded lines (chatter to shack.log); stderr: to shack.log
 	-------------------------------------------------------------------'''
 
 	def out(self):
 		while self.p.canReadLine():
-			self.add(bytes(self.p.readLine()).decode(errors='replace').rstrip() + '\n')
+			line = bytes(self.p.readLine()).decode(errors='replace').rstrip()
+			if line.startswith(self.CHATTER) or not line.strip():
+				log.info(f'{self.name}: {line}') if line.strip() else None
+			else:
+				self.add(line + '\n')
 		return
 	# out
 
@@ -728,16 +735,16 @@ class Vara:		# VARA HF: xara-monitor (a child process) decodes; this feeds it th
 		for line in bytes(self.p.readAllStandardError()).decode(errors='replace').splitlines():
 			if line.strip():
 				self.last = line.strip()
-				log.info(f'xara-monitor: {self.last}')
+				log.info(f'{self.name}: {self.last}')
 		return
 	# err
 
 	def ended(self, code, status):
-		self.gone(f'xara-monitor stopped: {self.last or "exit " + str(code)} (see shack.log)')
+		self.gone(f'{self.name} stopped: {self.last or "exit " + str(code)} (see shack.log)')
 		return
 
 	'''-------------------------------------------------------------------
-		EOF on its stdin is xara-monitor's cue to finish
+		EOF on its stdin is the program's cue to finish
 	-------------------------------------------------------------------'''
 
 	def close(self):
@@ -749,15 +756,16 @@ class Vara:		# VARA HF: xara-monitor (a child process) decodes; this feeds it th
 		return
 	# close
 
-# class Vara
+# class Helper
 
 
 '''===================================================================================================================================================
 
 ==================================================================================================================================================='''
 
-class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
-	KINDS = ['Off', 'RTTY', 'CW', 'VARA']
+class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (direwolf), on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
+	KINDS = ['Off', 'RTTY', 'CW', 'VARA', 'Packet']
+	PACKET = {300: (1550, 1850), 1200: (1150, 2250)}		# baud: audio band, mark and space tones inside it
 
 	'''-------------------------------------------------------------------
 		digi(): turns the radio's Digital out on
@@ -769,15 +777,16 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 		self.kind, self.baud, self.shift, self.rev = 'RTTY', 1000 / 22, 170, False
 		self.sq = {'RTTY': 6, 'CW': 10}		# squelch dB per decoder
 		self.hf = 2300		# VARA bandwidth
+		self.pk = 300		# packet baud
 		self.load()
-		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW or VARA. Right-click for settings')
+		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, VARA or packet. Right-click for settings')
 		self.pick.addItems(self.KINDS)
 		self.pick.activated.connect(lambda i: self.start(self.pick.itemText(i)))
 		self.sql = QSpinBox(minimum=0, maximum=30, suffix=' dB', keyboardTracking=False, enabled=False, toolTip='Squelch: decodes when the signal is this far above the noise, stops 3 dB lower')
 		self.sql.valueChanged.connect(self.set_sq)
 		self.status = QLabel(NODECODE and f"can't decode: {NODECODE}" or '')
 		self.status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)		# changing text mustn't resize the window
-		self.row = QWidget(toolTip='Right-click: Auto tune, RTTY and VARA settings, Clear')
+		self.row = QWidget(toolTip='Right-click: Auto tune, RTTY, VARA and packet settings, Clear')
 		h = QHBoxLayout(self.row)
 		h.setContentsMargins(0, 0, 0, 0)
 		h.addWidget(self.pick)
@@ -795,7 +804,7 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 	# __init__
 
 	'''-------------------------------------------------------------------
-		Off, RTTY, CW or VARA from the combo; listens on the port and turns Digital out on
+		Off, RTTY, CW, VARA or Packet from the combo; listens on the port and turns Digital out on
 	-------------------------------------------------------------------'''
 
 	def start(self, kind):
@@ -805,9 +814,10 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 		if not decode:
 			quiet(self.pick, self.pick.setCurrentIndex, 0)
 			return self.status.setText(f"can't decode: {NODECODE}")
-		if kind == 'VARA' and not Vara.path():
+		if kind in Helper.PROGRAMS and not Helper.find(kind):
 			quiet(self.pick, self.pick.setCurrentIndex, 0)
-			return self.status.setText("can't find xara-monitor (on the PATH or in ~/installed/builds/xara/target/release)")
+			name, alt = Helper.PROGRAMS[kind]
+			return self.status.setText(f"can't find {name} (on the PATH or at {alt})")
 		self.sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		try:
 			self.sk.bind(('127.0.0.1', self.port))
@@ -820,7 +830,7 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 		self.sk.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)		# room for a few seconds of audio if the window stalls (the kernel may cap it)
 		self.kind, self.heard = kind, time.monotonic()
 		self.make()
-		self.sql.setEnabled(kind != 'VARA')		# xara-monitor has no squelch
+		self.sql.setEnabled(kind not in Helper.PROGRAMS)		# the programs have no squelch here
 		self.digi()
 		self.timer.start()
 		self.save()
@@ -832,10 +842,13 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 	-------------------------------------------------------------------'''
 
 	def make(self, center=None):		# center: stay locked there; None = tune itself
-		if self.kind == 'VARA':
-			v = Vara(Vara.path(), self.hf, self.add, self.died)
+		if self.kind in Helper.PROGRAMS:
+			if self.kind == 'VARA':
+				h = Helper('VARA', ['--stdin', '48000', '--hf', str(self.hf)], (1500 - self.hf / 2, 1500 + self.hf / 2), self.add, self.died)		# VARA sits at 1500 Hz
+			else:
+				h = Helper('Packet', ['-c', self.dwconf(), '-t', '0'], self.PACKET[self.pk], self.add, self.died)
 			if self.sk:		# still on: a failed start has already turned it off
-				self.dec = v
+				self.dec = h
 			return self.newline()
 		if self.kind == 'RTTY':
 			self.dec = decode.Rtty(self.baud, self.shift, self.rev, center, self.sq['RTTY'])
@@ -852,7 +865,7 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 
 	def stop(self):
 		self.timer.stop()
-		if isinstance(self.dec, Vara):
+		if isinstance(self.dec, Helper):
 			self.dec.close()
 		if self.sk:
 			self.sk.close()
@@ -897,6 +910,8 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 			t = 'no audio: is Digital out on?'
 		elif self.kind == 'VARA':
 			t = f'{self.hf} Hz   xara-monitor listening'
+		elif self.kind == 'Packet':
+			t = f'{self.pk} baud   direwolf listening'
 		else:
 			t = ('locked  ' if tu.fixed else 'auto  ') + (f'{tu.center:.0f} Hz  {tu.snr:.0f} dB' if tu.center else '-- Hz') + ('  open  ' if self.dec.op else '  closed  ') + self.dec.info()
 		if self.kind == 'RTTY':
@@ -946,12 +961,35 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 
 	def vara(self, hf):
 		self.hf = hf
-		if isinstance(self.dec, Vara):
+		if self.kind == 'VARA' and isinstance(self.dec, Helper):
 			self.dec.close()
 			self.make()
 		self.save()
 		return
 	# vara
+
+	'''-------------------------------------------------------------------
+		packet speed changed: a new direwolf if packet is running
+	-------------------------------------------------------------------'''
+
+	def packet(self, baud):
+		self.pk = baud
+		if self.kind == 'Packet' and isinstance(self.dec, Helper):
+			self.dec.close()
+			self.make()
+		self.save()
+		return
+	# packet
+
+	'''-------------------------------------------------------------------
+		direwolf's config, written fresh each start: audio from stdin, nothing out, no network ports (nothing to clash with)
+	-------------------------------------------------------------------'''
+
+	def dwconf(self):
+		path = Path(tempfile.gettempdir()) / 'shack-direwolf.conf'
+		path.write_text(f'ADEVICE stdin null\nARATE 48000\nACHANNELS 1\nCHANNEL 0\nMODEM {self.pk}\nAGWPORT 0\nKISSPORT 0\n')
+		return str(path)
+	# dwconf
 
 	'''-------------------------------------------------------------------
 		RTTY settings changed: a new decoder if RTTY is running
@@ -966,7 +1004,7 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 	# rtty
 
 	'''-------------------------------------------------------------------
-		right-click on the row, the strip or the text: Auto tune, RTTY and VARA settings, Clear (the text also gets Copy, Select all)
+		right-click on the row, the strip or the text: Auto tune, RTTY, VARA and packet settings, Clear (the text also gets Copy, Select all)
 	-------------------------------------------------------------------'''
 
 	def menu(self, w, pos):
@@ -974,7 +1012,7 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 		if w is self.text:
 			m.addSeparator()
 		d = self.dec
-		if d and not isinstance(d, Vara):		# ticked = following the strongest signal; unticking locks where it is
+		if d and not isinstance(d, Helper):		# ticked = following the strongest signal; unticking locks where it is
 			self.check(m, 'Auto tune', not d.tu.fixed, lambda on: d.tune(None if on else d.tu.center))
 		r = m.addMenu('RTTY')
 		if decode:
@@ -990,6 +1028,9 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 		v = m.addMenu('VARA')
 		for hf in (500, 2300, 2750):
 			self.check(v, f'{hf} Hz', hf == self.hf, lambda on, hf=hf: self.vara(hf))
+		k = m.addMenu('Packet')
+		for b, what in ((300, '300 baud (HF)'), (1200, '1200 baud (VHF FM)')):
+			self.check(k, what, b == self.pk, lambda on, b=b: self.packet(b))
 		a = m.addAction('Clear')
 		a.triggered.connect(self.text.clear)
 		m.exec(w.mapToGlobal(pos))
@@ -1016,6 +1057,7 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 			self.baud, self.shift, self.rev = float(c['baud']), int(c['shift']), bool(c['rev'])
 			self.sq.update({k: float(v) for k, v in c['sq'].items() if k in self.sq})
 			self.hf = int(c.get('hf', self.hf))
+			self.pk = int(c.get('pk', self.pk))
 		except (OSError, ValueError, KeyError, TypeError, AttributeError):
 			pass
 		return
@@ -1026,7 +1068,7 @@ class Decoders:		# decode.py's RTTY and CW, and VARA (xara-monitor), on Digital 
 			return
 		try:
 			with open(decode.CONF, 'w') as f:
-				json.dump({'kind': self.kind, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf}, f)
+				json.dump({'kind': self.kind, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf, 'pk': self.pk}, f)
 		except OSError as e:
 			log.error(f'decoder settings: {e}')
 		return
