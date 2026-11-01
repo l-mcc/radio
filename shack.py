@@ -5,8 +5,8 @@ import argparse, json, logging, socket, sqlite3, sys, time
 from pathlib import Path
 
 import serial
-from PyQt6.QtCore import pyqtSignal, QEvent, QProcess, QRect, QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QPainter, QPalette, QShortcut, QTextCursor
+from PyQt6.QtCore import pyqtSignal, QEvent, QPointF, QProcess, QRect, QSize, Qt, QTimer
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
 
@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder (RSPdx)</h3>
-<p>Pick RTTY or CW: it turns Digital out on and decodes it (decode.py's decoders), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row or the text for RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, xara-monitor or nc first.</p>
+<p>Pick RTTY or CW: it turns Digital out on and decodes it (decode.py's decoders), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, xara-monitor or nc first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -579,7 +579,96 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 
 ==================================================================================================================================================='''
 
-class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of controls (self.row) and the text they decode (self.text)
+class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: click a signal to lock onto it
+	TOP = 40		# dB above the noise at the top of the strip
+
+	'''-------------------------------------------------------------------
+		owner: the Decoders it shows and tunes
+	-------------------------------------------------------------------'''
+
+	def __init__(self, owner):
+		super().__init__()
+		self.owner = owner
+		self.setFixedHeight(80)
+		self.setCursor(Qt.CursorShape.CrossCursor)
+		self.setToolTip('Click a signal to decode it (RTTY: either tone). Wheel: nudge 10 Hz. Right-click: Auto tune, settings.\nDashed line: squelch. Marker green while decoding')
+		return
+	# __init__
+
+	def hz(self, x):
+		return decode.F0 + x / self.width() * (decode.F1 - decode.F0)
+
+	def px(self, hz):
+		return round((hz - decode.F0) / (decode.F1 - decode.F0) * self.width())
+
+	'''-------------------------------------------------------------------
+		spectrum filled, 500 Hz grid and labels, squelch dashed, the tone(s) being decoded
+	-------------------------------------------------------------------'''
+
+	def paintEvent(self, e):
+		p = QPainter(self)
+		w, h = self.width(), self.height() - 14		# bottom 14 px: Hz labels
+		p.fillRect(self.rect(), self.palette().color(QPalette.ColorRole.Base))
+		if not decode:
+			return
+		p.setFont(QFont('DejaVu Sans', 7))
+		for f in range(500, decode.F1, 500):
+			x = self.px(f)
+			p.setPen(QColor('#e0e0e0'))
+			p.drawLine(x, 0, x, h)
+			p.setPen(QColor('#808080'))
+			p.drawText(QRect(x - 25, h, 50, 14), Qt.AlignmentFlag.AlignCenter, f'{f}')
+		d = self.owner.dec
+		if not d or d.tu.avg is None:
+			return
+		tu = d.tu
+		y = lambda db: h - max(0.0, min(1.0, db / self.TOP)) * h
+		edges = np.linspace(decode.F0, decode.F1, w + 1) / tu.df		# bins under each pixel column
+		db = tu.db(tu.avg[:int(edges[-1]) + 1])
+		col = np.maximum.reduceat(db, edges[:-1].astype(int))		# loudest bin in each column
+		pts = [QPointF(0, h)] + [QPointF(i, y(v)) for i, v in enumerate(col)] + [QPointF(w, h)]
+		p.setPen(Qt.PenStyle.NoPen)
+		p.setBrush(QColor('#3a7bd5'))
+		p.drawPolygon(QPolygonF(pts))
+		p.setPen(QPen(QColor('#606060'), 1, Qt.PenStyle.DashLine))
+		p.drawLine(0, round(y(tu.sq)), w, round(y(tu.sq)))
+		if tu.center:
+			sh = getattr(d, 'shift', 0)
+			p.setPen(QPen(QColor('#20a020' if d.op else '#e08000'), 2))
+			for f in ((tu.center - sh / 2, tu.center + sh / 2) if sh else (tu.center,)):
+				p.drawLine(self.px(f), 0, self.px(f), h)
+		return
+	# paintEvent
+
+	'''-------------------------------------------------------------------
+		click: lock onto the strongest tone (RTTY: tone pair) near the click
+	-------------------------------------------------------------------'''
+
+	def mousePressEvent(self, e):
+		d = self.owner.dec
+		if d and e.button() == Qt.MouseButton.LeftButton:
+			d.tune(d.tu.snap(self.hz(e.position().x()), getattr(d, 'shift', 0) / 2 + 40))
+			self.update()
+		return
+	# mousePressEvent
+
+	def wheelEvent(self, e):		# nudge 10 Hz, locks
+		d = self.owner.dec
+		if d and d.tu.center and e.angleDelta().y():
+			d.tune(min(max(d.tu.center + (10 if e.angleDelta().y() > 0 else -10), decode.F0), decode.F1))
+			self.update()
+		e.accept()
+		return
+	# wheelEvent
+
+# class Spectrum
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
+class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
 	KINDS = ['Off', 'RTTY', 'CW']
 
 	'''-------------------------------------------------------------------
@@ -608,7 +697,8 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 		self.text = QPlainTextEdit(readOnly=True, toolTip='Decoded text. Scroll up to read back; right-click for Clear and RTTY settings')
 		self.text.setMaximumBlockCount(500)
 		self.text.setFont(QFont('DejaVu Sans Mono', 11))
-		for w in (self.row, self.text):
+		self.spec = Spectrum(self)
+		for w in (self.row, self.spec, self.text):
 			w.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 			w.customContextMenuRequested.connect(lambda pos, w=w: self.menu(w, pos))
 		self.timer = QTimer(timeout=self.poll, interval=100)
@@ -645,14 +735,14 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 	# start
 
 	'''-------------------------------------------------------------------
-		a new decoder with the current settings, tuning itself
+		a new decoder with the current settings
 	-------------------------------------------------------------------'''
 
-	def make(self):
+	def make(self, center=None):		# center: stay locked there; None = tune itself
 		if self.kind == 'RTTY':
-			self.dec = decode.Rtty(self.baud, self.shift, self.rev, None, self.sq['RTTY'])
+			self.dec = decode.Rtty(self.baud, self.shift, self.rev, center, self.sq['RTTY'])
 		else:
-			self.dec = decode.Cw(None, self.sq['CW'])
+			self.dec = decode.Cw(center, self.sq['CW'])
 		quiet(self.sql, self.sql.setValue, round(self.sq[self.kind]))
 		self.newline()
 		return
@@ -669,6 +759,7 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 		self.sk, self.dec = None, None
 		self.sql.setEnabled(False)
 		self.status.setText('')
+		self.spec.update()
 		return
 	# stop
 
@@ -699,10 +790,11 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 		if time.monotonic() - self.heard > 1:
 			t = 'no audio: is Digital out on?'
 		else:
-			t = (f'{tu.center:.0f} Hz  {tu.snr:.0f} dB' if tu.center else '-- Hz') + ('  open  ' if self.dec.op else '  closed  ') + self.dec.info()
+			t = ('locked  ' if tu.fixed else 'auto  ') + (f'{tu.center:.0f} Hz  {tu.snr:.0f} dB' if tu.center else '-- Hz') + ('  open  ' if self.dec.op else '  closed  ') + self.dec.info()
 		if self.kind == 'RTTY':
 			t = f'{self.bd(self.baud)} Bd  {self.shift} Hz{"  mark low" if self.rev else ""}    ' + t
 		self.status.setText(t)
+		self.spec.update()
 		return
 	# poll
 
@@ -747,19 +839,22 @@ class Decoders:		# decode.py's RTTY and CW on Digital out (UDP 7355): a row of c
 	def rtty(self, baud, shift, rev):
 		self.baud, self.shift, self.rev = baud, shift, rev
 		if self.dec and self.kind == 'RTTY':
-			self.make()
+			self.make(self.dec.tu.center if self.dec.tu.fixed else None)
 		self.save()
 		return
 	# rtty
 
 	'''-------------------------------------------------------------------
-		right-click on the row or the text: RTTY settings, Clear (the text also gets Copy, Select all)
+		right-click on the row, the strip or the text: Auto tune, RTTY settings, Clear (the text also gets Copy, Select all)
 	-------------------------------------------------------------------'''
 
 	def menu(self, w, pos):
 		m = self.text.createStandardContextMenu() if w is self.text else QMenu(w)
 		if w is self.text:
 			m.addSeparator()
+		d = self.dec
+		if d:		# ticked = following the strongest signal; unticking locks where it is
+			self.check(m, 'Auto tune', not d.tu.fixed, lambda on: d.tune(None if on else d.tu.center))
 		r = m.addMenu('RTTY')
 		if decode:
 			for name, b, s, rev in decode.PRESETS:
@@ -931,7 +1026,7 @@ class Shack(QMainWindow):
 		self.bms.customContextMenuRequested.connect(self.bm_menu)
 		self.bmlist = []
 		self.dec = Decoders(lambda: self.rig and self.rig.set('digi', True))
-		self.rsp = (self.dec.row, self.dec.text, self.ifr,self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
+		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
 		self.tx = QLabel('RX')
@@ -974,6 +1069,8 @@ class Shack(QMainWindow):
 		self.labels[self.dec.row] = QLabel('Decoder')
 		g.addWidget(self.labels[self.dec.row], row, 0)
 		g.addWidget(self.dec.row, row, 1, 1, 2)
+		row += 1
+		g.addWidget(self.dec.spec, row, 0, 1, 3)
 		row += 1
 		g.addWidget(self.dec.text, row, 0, 1, 3)
 		g.setRowStretch(row, 1)		# spare height goes to the decoded text (or below the rows when it's hidden)
