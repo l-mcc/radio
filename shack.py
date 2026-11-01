@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder (RSPdx)</h3>
-<p>Pick RTTY, CW, VARA or Packet: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it, and non-APRS ones an 'Unknown APRS Data Type' line you can ignore. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, VARA or Packet: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -687,6 +687,7 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 		self.tu = decode.Tuner(None, 99, 0, 4)		# spectrum only; a 99 dB squelch never picks a signal
 		self.op, self.last = False, ''		# last: its last stderr line
 		self.hush = kind == 'Packet'		# direwolf talks a lot before its first packet (VOX advice...): shack.log until then
+		self.drop = ()		# line starts not to show at all
 		self.p = QProcess()
 		self.p.readyReadStandardOutput.connect(self.out)
 		self.p.readyReadStandardError.connect(self.err)
@@ -727,6 +728,8 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 			line = bytes(self.p.readLine()).decode(errors='replace').rstrip()
 			if self.hush and 'audio level' in line:		# a packet's first line
 				self.hush = False
+			if line.startswith(self.drop):
+				continue
 			if self.hush or line.startswith(self.CHATTER) or not line.strip():
 				log.info(f'{self.name}: {line}') if line.strip() else None
 			else:
@@ -769,6 +772,7 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (direwolf), on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
 	KINDS = ['Off', 'RTTY', 'CW', 'VARA', 'Packet']
 	PACKET = {300: (1550, 1850), 1200: (1150, 2250)}		# baud: audio band, mark and space tones inside it
+	NAGS = ('ERROR!!!  Unknown APRS Data Type', 'Use of "ID" in the destination', 'Tell the sender')		# direwolf on packets that aren't APRS (BBS and node IDs)
 
 	'''-------------------------------------------------------------------
 		digi(): turns the radio's Digital out on
@@ -781,6 +785,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 		self.sq = {'RTTY': 6, 'CW': 10}		# squelch dB per decoder
 		self.hf = 2300		# VARA bandwidth
 		self.pk = 300		# packet baud
+		self.hide = True		# hide direwolf's complaints about non-APRS packets
 		self.load()
 		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, VARA or packet. Right-click for settings')
 		self.pick.addItems(self.KINDS)
@@ -850,6 +855,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 				h = Helper('VARA', ['--stdin', '48000', '--hf', str(self.hf)], (1500 - self.hf / 2, 1500 + self.hf / 2), self.add, self.died)		# VARA sits at 1500 Hz
 			else:
 				h = Helper('Packet', ['-c', self.dwconf(), '-t', '0'], self.PACKET[self.pk], self.add, self.died)
+				h.drop = self.NAGS if self.hide else ()
 			if self.sk:		# still on: a failed start has already turned it off
 				self.dec = h
 			return self.newline()
@@ -985,6 +991,18 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 	# packet
 
 	'''-------------------------------------------------------------------
+		direwolf's "Unknown APRS Data Type" and "Use of ID is obsolete" lines on BBS and node IDs: hidden or shown, from now on
+	-------------------------------------------------------------------'''
+
+	def nags(self, hide):
+		self.hide = hide
+		if self.kind == 'Packet' and isinstance(self.dec, Helper):
+			self.dec.drop = self.NAGS if hide else ()
+		self.save()
+		return
+	# nags
+
+	'''-------------------------------------------------------------------
 		direwolf's config, written fresh each start: audio from stdin, nothing out, no network ports or announcing (nothing to clash with)
 	-------------------------------------------------------------------'''
 
@@ -1034,6 +1052,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 		k = m.addMenu('Packet')
 		for b, what in ((300, '300 baud (HF)'), (1200, '1200 baud (VHF FM)')):
 			self.check(k, what, b == self.pk, lambda on, b=b: self.packet(b))
+		k.addSeparator()
+		self.check(k, 'Hide complaints about non-APRS packets', self.hide, self.nags)
 		a = m.addAction('Clear')
 		a.triggered.connect(self.text.clear)
 		m.exec(w.mapToGlobal(pos))
@@ -1061,6 +1081,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 			self.sq.update({k: float(v) for k, v in c['sq'].items() if k in self.sq})
 			self.hf = int(c.get('hf', self.hf))
 			self.pk = int(c.get('pk', self.pk))
+			self.hide = bool(c.get('hide', self.hide))
 		except (OSError, ValueError, KeyError, TypeError, AttributeError):
 			pass
 		return
@@ -1071,7 +1092,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 			return
 		try:
 			with open(decode.CONF, 'w') as f:
-				json.dump({'kind': self.kind, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf, 'pk': self.pk}, f)
+				json.dump({'kind': self.kind, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf, 'pk': self.pk, 'hide': self.hide}, f)
 		except OSError as e:
 			log.error(f'decoder settings: {e}')
 		return
