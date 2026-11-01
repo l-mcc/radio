@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, logging, shutil, socket, sqlite3, sys, tempfile, time
+import argparse, json, logging, shutil, socket, sqlite3, subprocess, sys, tempfile, time
 from pathlib import Path
 
 import serial
@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder (RSPdx)</h3>
-<p>Pick RTTY, CW, VARA or Packet: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, VARA, Packet or JS8: it turns Digital out on and decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (it has to be running): shack plays Digital out into a sound device of its own, shack-JS8, and shows each frame JS8Call decodes (UTC, SNR, offset, text). Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -673,7 +673,8 @@ class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: 
 ==================================================================================================================================================='''
 
 class Helper:		# a decoder program run as a child: Digital out goes to its stdin, its lines to the text box (xara-monitor for VARA, direwolf for packet). Same face as decode.Rtty / Cw
-	PROGRAMS = {'VARA': ('xara-monitor', '~/installed/builds/xara/target/release/xara-monitor'), 'Packet': ('direwolf', '~/installed/builds/direwolf/build/src/direwolf')}		# kind: (name on the PATH, where else to look)
+	PROGRAMS = {'VARA': ('xara-monitor', '~/installed/builds/xara/target/release/xara-monitor'), 'Packet': ('direwolf', '~/installed/builds/direwolf/build/src/direwolf'),
+		'JS8': ('pacat', '/usr/bin/pacat')}		# kind: (name on the PATH, where else to look). JS8: pacat plays the audio into a sound device JS8Call listens to
 	CHATTER = ('Dire Wolf', 'Includes optional', 'Reading config', 'Audio input', 'Audio out', 'Channel 0:', 'Note: PTT', 'Disabled', 'Running this as root', 'End of file')		# direwolf's start-up and exit lines: shack.log only
 
 	'''-------------------------------------------------------------------
@@ -770,8 +771,9 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 
 ==================================================================================================================================================='''
 
-class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (direwolf), on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
-	KINDS = ['Off', 'RTTY', 'CW', 'VARA', 'Packet']
+class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwolf) and JS8 (JS8Call), on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
+	KINDS = ['Off', 'RTTY', 'CW', 'VARA', 'Packet', 'JS8']
+	SINK, JS8PORT = 'shack_js8', 2242		# JS8: null sink JS8Call's input listens to (its monitor); JS8Call's UDP API port
 	PACKET = {300: (1550, 1850), 1200: (1150, 2250)}		# baud: audio band, mark and space tones inside it
 	NAGS = ('ERROR!!!  Unknown APRS Data Type', 'Use of "ID" in the destination', 'Tell the sender')		# direwolf on packets that aren't APRS (BBS and node IDs)
 
@@ -787,8 +789,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 		self.hf = 2300		# VARA bandwidth
 		self.pk = 300		# packet baud
 		self.hide = True		# hide direwolf's complaints about non-APRS packets
+		self.api, self.js8 = None, None		# JS8: socket JS8Call's API sends to; (when it last pinged, its version)
 		self.load()
-		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, VARA or packet. Right-click for settings')
+		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, VARA, packet or JS8 (through JS8Call). Right-click for settings')
 		self.pick.addItems(self.KINDS)
 		self.pick.activated.connect(lambda i: self.start(self.pick.itemText(i)))
 		self.sql = QSpinBox(minimum=0, maximum=30, suffix=' dB', keyboardTracking=False, enabled=False, toolTip='Squelch: decodes when the signal is this far above the noise, stops 3 dB lower')
@@ -813,7 +816,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 	# __init__
 
 	'''-------------------------------------------------------------------
-		Off, RTTY, CW, VARA or Packet from the combo; listens on the port and turns Digital out on
+		Off, RTTY, CW, VARA, Packet or JS8 from the combo; listens on the port and turns Digital out on
 	-------------------------------------------------------------------'''
 
 	def start(self, kind):
@@ -837,6 +840,11 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 			return self.status.setText(f'UDP {self.port}: {e.strerror}. Is decode.py, xara-monitor or nc listening?')
 		self.sk.setblocking(False)
 		self.sk.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)		# room for a few seconds of audio if the window stalls (the kernel may cap it)
+		if kind == 'JS8':
+			why = self.js8open()
+			if why:
+				self.off()		# closes what's open
+				return self.status.setText(why)
 		self.kind, self.heard = kind, time.monotonic()
 		self.make()
 		self.sql.setEnabled(kind not in Helper.PROGRAMS)		# the programs have no squelch here
@@ -854,6 +862,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 		if self.kind in Helper.PROGRAMS:
 			if self.kind == 'VARA':
 				h = Helper('VARA', ['--stdin', '48000', '--hf', str(self.hf)], (1500 - self.hf / 2, 1500 + self.hf / 2), self.add, self.died)		# VARA sits at 1500 Hz
+			elif self.kind == 'JS8':
+				h = Helper('JS8', ['--playback', '--raw', '--format=s16le', '--rate=48000', '--channels=1', f'--device={self.SINK}', '--latency-msec=200'], (500, 2500), self.add, self.died)		# JS8 signals sit in 500-2500 Hz
 			else:
 				h = Helper('Packet', ['-c', self.dwconf(), '-t', '0'], self.PACKET[self.pk], self.add, self.died)
 				h.drop = self.NAGS if self.hide else ()
@@ -880,7 +890,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 			self.dec.close()
 		if self.sk:
 			self.sk.close()
-		self.sk, self.dec = None, None
+		if self.api:
+			self.api.close()
+		self.sk, self.dec, self.api, self.js8 = None, None, None, None
 		self.sql.setEnabled(False)
 		self.status.setText('')
 		self.spec.update()
@@ -892,7 +904,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 		quiet(self.pick, self.pick.setCurrentIndex, 0)
 		return
 
-	def died(self, why):		# xara-monitor stopped by itself
+	def died(self, why):		# the decoder program stopped by itself
 		self.dec = None		# already gone, nothing to close
 		self.off()
 		self.status.setText(why)
@@ -916,6 +928,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 				self.newline()
 			if txt:
 				self.add(txt)
+		if self.api:
+			self.js8in()
 		tu = self.dec.tu
 		if time.monotonic() - self.heard > 1:
 			t = 'no audio: is Digital out on?'
@@ -923,6 +937,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 			t = f'{self.hf} Hz   xara-monitor listening'
 		elif self.kind == 'Packet':
 			t = f'{self.pk} baud   direwolf listening'
+		elif self.kind == 'JS8':
+			ok = self.js8 and time.monotonic() - self.js8[0] < 40		# it pings every 15 s
+			t = f'JS8Call {self.js8[1]} connected' if ok else f'waiting for JS8Call: running? Settings > Reporting > UDP Server API on, port {self.JS8PORT}? Input: Monitor of shack-JS8'
 		else:
 			t = ('locked  ' if tu.fixed else 'auto  ') + (f'{tu.center:.0f} Hz  {tu.snr:.0f} dB' if tu.center else '-- Hz') + ('  open  ' if self.dec.op else '  closed  ') + self.dec.info()
 		if self.kind == 'RTTY':
@@ -1003,6 +1020,54 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor) and packet (dire
 		self.save()
 		return
 	# nags
+
+	'''-------------------------------------------------------------------
+		JS8: the null sink pacat plays into (made once, left in place so JS8Call keeps its input), and the port JS8Call's API sends to.
+		returns why it can't, or None
+	-------------------------------------------------------------------'''
+
+	def js8open(self):
+		try:
+			if self.SINK not in subprocess.run(['pactl', 'list', 'short', 'sinks'], capture_output=True, text=True, timeout=5).stdout:
+				subprocess.run(['pactl', 'load-module', 'module-null-sink', f'sink_name={self.SINK}', 'sink_properties=device.description=shack-JS8', 'rate=48000', 'channels=1'],
+					check=True, capture_output=True, timeout=5)
+				log.info(f'made the {self.SINK} sink for JS8Call')
+		except (OSError, subprocess.SubprocessError) as e:
+			log.error(f'JS8 sink: {e!r}')
+			return f"couldn't make the shack-JS8 sound device (pactl: {e})"
+		self.api = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		try:
+			self.api.bind(('127.0.0.1', self.JS8PORT))
+		except OSError as e:
+			self.api.close()
+			self.api = None
+			return f'UDP {self.JS8PORT}: {e.strerror}. Another program listening to JS8Call?'
+		self.api.setblocking(False)
+		return None
+	# js8open
+
+	'''-------------------------------------------------------------------
+		JS8Call's API messages: PING every 15 s, CLOSE when it quits, RX.ACTIVITY for each decoded frame (shown)
+	-------------------------------------------------------------------'''
+
+	def js8in(self):
+		while True:
+			try:
+				m = json.loads(self.api.recv(65536))
+			except BlockingIOError:
+				break
+			except ValueError:
+				continue
+			kind, p = m.get('type'), m.get('params', {})
+			if kind == 'PING':
+				self.js8 = (time.monotonic(), p.get('VERSION', ''))
+			elif kind == 'CLOSE':
+				self.js8 = None
+			elif kind == 'RX.ACTIVITY':
+				utc = time.strftime('%H:%M:%S', time.gmtime(p.get('UTC', 0) / 1000))
+				self.add(f"{utc}  {p.get('SNR', 0):+3d} dB  {p.get('OFFSET', 0):4d} Hz  {m.get('value', '').strip()}\n")
+		return
+	# js8in
 
 	'''-------------------------------------------------------------------
 		direwolf's config, written fresh each start: audio from stdin, nothing out, no network ports or announcing (nothing to clash with)
