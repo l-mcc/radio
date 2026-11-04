@@ -70,6 +70,7 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		self.mhz, self.vfo, self.tx, self.mode = 0.0, 'A', 0, ''
 		self.maxw, self.pmax = {}, 0		# the radio's MAX POWER menu limits; the one that applies now
 		self.oddref = None		# an SS04 reply that isn't a number, logged once
+		self.kick = False		# after a VS from here: the radio shows the new VFO but keeps receiving the old one until its frequency changes
 		self.last_set = 0.0		# a ?; is only reported right after a user command
 		self.alive, self.heard = True, time.monotonic()
 		threading.Thread(target=self.reader, daemon=True).start()
@@ -143,6 +144,9 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 	def dispatch(self, cmd, d):
 		if cmd in ('FA', 'FB') and d.isdigit():
 			if cmd[1] == self.vfo:		# the other VFO's frequency isn't the dial
+				if self.kick:		# 10 Hz up and back: retunes the receiver, ends where it was
+					self.kick = False
+					self.send(f'{cmd}{int(d) + 10:09d};{cmd}{d};')
 				self.mhz = int(d) / 1e6
 				self.emit('mhz', self.mhz)
 				self.limit()
@@ -240,6 +244,7 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		elif k == 'mode':
 			self.send(f'MD0{MODES[v]};MD0;')
 		elif k == 'vfo':
+			self.kick = True
 			self.send(f"VS{0 if v == 'A' else 1};VS;")
 		elif k == 'v':		# shack's volume 0-1
 			self.set('vol', round(float(v) * 255))
