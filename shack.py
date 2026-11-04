@@ -63,7 +63,7 @@ HELP = '''
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
-<p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit), mode, volume, RF gain, AGC, Preamp (on = AMP1, off = IPO), ATT (18 dB), NB and NR with their levels, S-meter, power (5-100 W) and PTT. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
+<p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit), mode, volume, RF gain, AGC, Preamp (IPO, AMP1, AMP2), ATT (off, 6, 12, 18 dB), Roofing (the radio's R FIL: 12 kHz, 3 kHz, 500 Hz), NB and NR with their levels, S-meter, power and PTT; bookmarks keep Preamp, ATT and Roofing too. Power goes from 5 W up to what the radio's own menu allows (TX GENERAL > HF / 50M MAX POWER, and AM MAX POWER in AM); the slider stops there, and its tooltip says the limit. Raise it in the radio's menu. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -1548,6 +1548,15 @@ class Shack(QMainWindow):
 		self.agc = QComboBox(toolTip='The radio\'s AGC')
 		self.agc.activated.connect(lambda i: self.rig and self.rig.set('agc', self.agcs[self.agc.itemText(i)]))
 		self.agcs = {}		# label: 16 12 value, per radio (civ.RIGS)
+		self.pa = QComboBox(toolTip='Preamp: IPO = none (strong signals, low bands), AMP1, AMP2 = most gain')
+		self.pa.addItems(cat.PREAMPS)
+		self.pa.activated.connect(lambda i: self.rig and self.rig.set('pa', i))
+		self.ra = QComboBox(toolTip='Attenuator')
+		self.ra.addItems(cat.ATTS)
+		self.ra.activated.connect(lambda i: self.rig and self.rig.set('ra', i))
+		self.roof = QComboBox(toolTip='Roofing filter (R FIL): the first, widest filter. Narrower keeps strong nearby signals out; it should be at least as wide as the mode needs')
+		self.roof.addItems(list(cat.ROOFS))
+		self.roof.activated.connect(lambda i: self.rig and self.rig.set('roof', self.roof.itemText(i)))
 		h = QHBoxLayout(self.power)
 		h.setContentsMargins(0, 0, 0, 0)
 		h.addWidget(self.pwr)
@@ -1662,7 +1671,7 @@ class Shack(QMainWindow):
 		self.labels = {}		# control: its row label
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
-		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc),
+		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof),
 				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
@@ -1704,7 +1713,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.smeter, self.swr, self.power, self.pttrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.smeter, self.swr, self.power, self.pttrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -1773,7 +1782,7 @@ class Shack(QMainWindow):
 		if not dev:
 			return self.oops(f"Can't find the {name}.\n\nIs it plugged in and turned on?")
 		try:
-			self.rig = cat.Rig(dev, self.a.baud or r['baud'], self.got.emit, r['att'])
+			self.rig = cat.Rig(dev, self.a.baud or r['baud'], self.got.emit)
 		except serial.SerialException as e:
 			return self.oops(f"Found the {name} but couldn't open it.\n\n{e}\n\nIs another program (flrig, rigctld, WSJT-X) using it?")
 		try:
@@ -1788,7 +1797,7 @@ class Shack(QMainWindow):
 		quiet(self.pwr, self.pwr.setRange, self.pscale[0] * 10, self.pscale[1] * 10)
 		self.rig.poll(0)
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.save, self.bms,
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.save, self.bms,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))
 		self.dec.opened(r['audio'])
 		self.levels()
@@ -2098,6 +2107,16 @@ class Shack(QMainWindow):
 				return self.pwrv.setText('?')
 			quiet(self.pwr, self.pwr.setValue, round(v / 2.55) if not self.pscale else round((self.pscale[0] + v / 255 * (self.pscale[1] - self.pscale[0])) * 10))
 			self.pwrv.setText(self.pwr_text(self.pwr.value()))
+		elif k in ('pa', 'ra'):		# FTdx10: index into cat.PREAMPS / ATTS
+			w = self.pa if k == 'pa' else self.ra
+			if 0 <= v < w.count():
+				quiet(w, w.setCurrentIndex, v)
+		elif k == 'roof':
+			quiet(self.roof, self.roof.setCurrentText, v)
+		elif k == 'pmax':		# FTdx10: its MAX POWER menu caps what PC can set
+			quiet(self.pwr, self.pwr.setMaximum, v * 10)
+			self.pwrv.setText(self.pwr_text(self.pwr.value()))
+			self.power.setToolTip(f"Transmit power. The radio's MAX POWER menu (TX GENERAL) allows {v} W here. Changing it doesn't transmit")
 		elif k == 'agc':
 			name = next((n for n, x in self.agcs.items() if x == v), None)
 			if name:
@@ -2248,7 +2267,11 @@ class Shack(QMainWindow):
 	def settings(self):
 		if isinstance(self.rig, Rspdx):
 			return self.rig.settings()
-		s = {'v': self.vol.value(), 'rfg': self.rfg.value(), 'nbl': self.lvl['nb'].value(), 'nrl': self.lvl['nr'].value(), **{k: int(self.sw[k].isChecked()) for k in ('pre', 'att', 'nb', 'nr')}}
+		s = {'v': self.vol.value(), 'rfg': self.rfg.value(), 'nbl': self.lvl['nb'].value(), 'nrl': self.lvl['nr'].value(), **{k: int(self.sw[k].isChecked()) for k in ('nb', 'nr')}}
+		if isinstance(self.rig, cat.Rig):
+			s.update(pa=self.pa.currentIndex(), ra=self.ra.currentIndex(), roof=self.roof.currentText())
+		else:
+			s.update(pre=int(self.sw['pre'].isChecked()), att=int(self.sw['att'].isChecked()))
 		if self.fil.currentIndex() >= 0:
 			s['fil'] = self.fil.currentIndex() + 1
 		if self.agc.currentText() in self.agcs:
@@ -2262,7 +2285,7 @@ class Shack(QMainWindow):
 		for k, v in s.items():
 			if k in ('rfg', 'nbl', 'nrl'):		# % -> 0-255
 				self.rig.set(k, round(v * 2.55))
-			elif k in ('v', 'fil', 'pre', 'att', 'nb', 'nr', 'agc'):
+			elif k in ('v', 'fil', 'pre', 'att', 'nb', 'nr', 'agc', 'pa', 'ra', 'roof'):
 				self.rig.set(k, v)
 		return
 	# apply

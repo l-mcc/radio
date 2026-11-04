@@ -13,9 +13,14 @@ MODES = {'LSB': '1', 'USB': '2', 'CW': '3', 'NBFM': '4', 'AM': '5', 'RTTY': '6',
 RMODES = {v: k for k, v in MODES.items()}
 SMETER = [(0, -54), (12, -48), (27, -42), (40, -36), (55, -30), (65, -24), (80, -18), (95, -12), (112, -6), (130, 0), (150, 10), (172, 20), (190, 30), (220, 40), (240, 50), (255, 60)]		# SM0 0-255 -> dB re S9, Hamlib's Yaesu table: check against the radio's meter
 
-RIGS = {		# port: by-id pattern of the CAT port (the CP2105's Enhanced port; if01 is the Standard port, RTS/DTR keying: never opened); audio: ALSA card; top: MHz; att: RA0 value for on; agc: GT0 values; watts: PC range
+PREAMPS = ['IPO', 'AMP1', 'AMP2']		# PA0 0-2
+ATTS = ['Off', '6 dB', '12 dB', '18 dB']		# RA0 0-3
+ROOFS = {'12 kHz': ('1', '6'), '3 kHz': ('2', '7'), '500 Hz': ('4', '9')}		# RF0: (set value, answer value); 300 Hz is an option filter
+MAXW = {'030401': 'HF', '030402': '50M', '030404': 'AM'}		# EX menu items: TX GENERAL > HF / 50M / AM MAX POWER, W
+
+RIGS = {		# port: by-id pattern of the CAT port (the CP2105's Enhanced port; if01 is the Standard port, RTS/DTR keying: never opened); audio: ALSA card; top: MHz; agc: GT0 values; watts: PC range
 	'FTdx10': dict(port='*CP2105_Dual_USB_to_UART*if00-port0', audio='plughw:CARD=CODEC', baud=38400, modes=['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'AM-N', 'CW', 'CW-R', 'RTTY', 'RTTY-R', 'NBFM', 'NBFM-D', 'FM-N', 'PSK'], top=75,
-		att='3', agc={'Off': 0, 'Fast': 1, 'Mid': 2, 'Slow': 3, 'Auto': 4}, watts=(5, 100)),		# att 3 = 18 dB (1 6 dB, 2 12 dB)
+		agc={'Off': 0, 'Fast': 1, 'Mid': 2, 'Slow': 3, 'Auto': 4}, watts=(5, 100)),
 }
 
 '''-------------------------------------------------------------------
@@ -42,19 +47,20 @@ def smeter(v):
 
 class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same face as civ.Rig
 	POLL = 'SM0;TX;'		# every 250 ms
-	SLOW = 'VS;MD0;AG0;RG0;PC;PA0;RA0;GT0;NB0;NR0;NL0;RL0;'		# every second, so the radio's own knobs show up too
+	SLOW = 'VS;MD0;AG0;RG0;PC;PA0;RA0;RF0;GT0;NB0;NR0;NL0;RL0;' + ''.join(f'EX{k};' for k in MAXW)		# every second, so the radio's own knobs show up too
 
 	'''-------------------------------------------------------------------
 		RTS held high: the Enhanced port uses it as flow control, the radio holds its replies while it's low
 	-------------------------------------------------------------------'''
 
-	def __init__(self, dev, baud, emit, att='3'):
+	def __init__(self, dev, baud, emit):
 		self.ser = serial.Serial(None, baud, timeout=0.2, exclusive=True)
 		self.ser.port, self.ser.dtr, self.ser.rts = dev, False, True
 		self.ser.open()
-		self.emit, self.att_on = emit, att		# emit(kind, value) is called from the reader thread
+		self.emit = emit		# emit(kind, value) is called from the reader thread
 		self.wlock = threading.Lock()
-		self.mhz, self.vfo, self.tx = 0.0, 'A', 0
+		self.mhz, self.vfo, self.tx, self.mode = 0.0, 'A', 0, ''
+		self.maxw, self.pmax = {}, 0		# the radio's MAX POWER menu limits; the one that applies now
 		self.last_set = 0.0		# a ?; is only reported right after a user command
 		self.alive, self.heard = True, time.monotonic()
 		threading.Thread(target=self.reader, daemon=True).start()
@@ -130,9 +136,12 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 			if cmd[1] == self.vfo:		# the other VFO's frequency isn't the dial
 				self.mhz = int(d) / 1e6
 				self.emit('mhz', self.mhz)
+				self.limit()
 		elif cmd == 'MD' and len(d) == 2:
 			if d[1] in RMODES:
-				self.emit('mode', RMODES[d[1]])
+				self.mode = RMODES[d[1]]
+				self.emit('mode', self.mode)
+				self.limit()
 		elif cmd == 'SM' and len(d) == 4 and d.isdigit():
 			self.emit('smeter', smeter(int(d[1:])))
 		elif cmd == 'TX' and d.isdigit():
@@ -149,8 +158,17 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		elif cmd == 'PC' and d.isdigit():		# watts -> shack's 0-255 power level
 			lo, hi = RIGS['FTdx10']['watts']
 			self.emit('pwr', (int(d) - lo) / (hi - lo) * 255)		# unrounded, so 10 W reads back as 10.0
-		elif cmd in ('PA', 'RA', 'NB', 'NR') and len(d) == 2 and d.isdigit():		# PA: 0 IPO, 1 AMP1, 2 AMP2; RA: 0 off, 1-3 = 6-18 dB
-			self.emit({'PA': 'pre', 'RA': 'att', 'NB': 'nb', 'NR': 'nr'}[cmd], int(d[1] != '0'))
+		elif cmd in ('PA', 'RA') and len(d) == 2 and d.isdigit():		# index into PREAMPS / ATTS
+			self.emit(cmd.lower(), int(d[1]))
+		elif cmd == 'RF' and len(d) == 2:
+			name = next((n for n, (_, a) in ROOFS.items() if a == d[1]), None)
+			if name:
+				self.emit('roof', name)
+		elif cmd in ('NB', 'NR') and len(d) == 2 and d.isdigit():
+			self.emit(cmd.lower(), int(d[1] != '0'))
+		elif cmd == 'EX' and d[:6] in MAXW and d[6:].isdigit():
+			self.maxw[MAXW[d[:6]]] = int(d[6:])
+			self.limit()
 		elif cmd == 'GT' and len(d) == 2 and d.isdigit():
 			self.emit('agc', min(int(d[1]), 4))		# 4-6 read back = AUTO (fast, mid, slow)
 		elif cmd == 'NL' and len(d) == 4 and d.isdigit():		# NB level 0-10
@@ -161,6 +179,20 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 			self.emit('error', 'Radio rejected the last command')
 		return
 	# dispatch
+
+	'''-------------------------------------------------------------------
+		the power the radio allows here (its MAX POWER menu: HF, 50 MHz, AM on top of either), emitted when it changes
+	-------------------------------------------------------------------'''
+
+	def limit(self):
+		w = self.maxw.get('50M' if self.mhz >= 50 else 'HF')
+		if w and self.mode.startswith('AM') and 'AM' in self.maxw:
+			w = min(w, self.maxw['AM'])
+		if w and w != self.pmax:
+			self.pmax = w
+			self.emit('pmax', w)
+		return
+	# limit
 
 	'''-------------------------------------------------------------------
 		False: refused, outside the ham bands (unkeying always goes through)
@@ -196,10 +228,11 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		elif k == 'pwr':
 			lo, hi = RIGS['FTdx10']['watts']
 			self.send(f'PC{round(lo + int(v) / 255 * (hi - lo)):03d};PC;')
-		elif k == 'pre':
-			self.send(f"PA0{1 if int(v) else 0};PA0;")		# on = AMP1
-		elif k == 'att':
-			self.send(f"RA0{self.att_on if int(v) else 0};RA0;")
+		elif k in ('pa', 'ra'):		# index into PREAMPS / ATTS
+			c = k.upper()
+			self.send(f'{c}0{int(v)};{c}0;')
+		elif k == 'roof':
+			self.send(f'RF0{ROOFS[v][0]};RF0;')
 		elif k == 'agc':
 			self.send(f'GT0{int(v)};GT0;')
 		elif k in ('nb', 'nr'):
