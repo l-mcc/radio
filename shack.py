@@ -10,7 +10,7 @@ from PyQt6.QtGui import QColor, QFont, QFontMetrics, QImage, QKeySequence, QPain
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
 
-import civ, styles
+import cat, civ, styles
 try:		# decoders need numpy; without it shack still runs, the Decoder row says why
 	import numpy as np
 	import decode
@@ -23,7 +23,7 @@ log = logging.getLogger('shack')		# set up in main by utils.setup_logging
 
 HELP = '''
 <h3>Radio</h3>
-<p>Pick IC-705, RSPdx or Xiegu x6200 to open it, none to close it. Only one radio is open at a time; only its own controls are shown. A greyed-out one doesn't apply in the current mode (Bandwidth outside SSB, for example).</p>
+<p>Pick IC-705, RSPdx, Xiegu x6200 or FTdx10 to open it, none to close it. Only one radio is open at a time; only its own controls are shown. A greyed-out one doesn't apply in the current mode (Bandwidth outside SSB, for example).</p>
 
 <h3>Frequency</h3>
 <p>Like the waterfall page: the mouse wheel over any digit tunes that digit (the dimmed leading zeros too, for big jumps); clicking a digit's top half steps it up, its bottom half down. Arrow keys: left/right picks a digit, up/down tunes it. Or just type a frequency in MHz (7.074) and press Enter; Esc cancels. The radio's own changes don't overwrite what you're typing.</p>
@@ -61,6 +61,9 @@ HELP = '''
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
+
+<h3>FTdx10</h3>
+<p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit), mode, volume, RF gain, AGC, Preamp (on = AMP1, off = IPO), ATT (18 dB), NB and NR with their levels, S-meter, power (5-100 W) and PTT. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -1518,7 +1521,7 @@ class Shack(QMainWindow):
 		self.got.connect(self.on_rig, Qt.ConnectionType.QueuedConnection)		# always via the event loop, never inside a rig callback
 
 		self.radio = QComboBox()
-		self.radio.addItems(['none', 'IC-705', 'RSPdx', 'Xiegu x6200'])
+		self.radio.addItems(['none', 'IC-705', 'RSPdx', 'Xiegu x6200', 'FTdx10'])
 		self.radio.activated.connect(lambda i: self.pick(self.radio.itemText(i)))
 		self.freq = Freq()
 		self.freq.changed.connect(lambda v: self.rig and self.rig.set('mhz', v))
@@ -1715,6 +1718,8 @@ class Shack(QMainWindow):
 		self.shut()
 		if name in civ.RIGS:
 			self.open_civ(name)
+		elif name in cat.RIGS:
+			self.open_cat(name)
 		elif name == 'RSPdx':
 			self.open_rx()
 		return
@@ -1757,6 +1762,41 @@ class Shack(QMainWindow):
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_civ
+
+	'''-------------------------------------------------------------------
+		open a Yaesu CAT radio: the FTdx10 (no filter presets, SWR or scope over CAT yet)
+	-------------------------------------------------------------------'''
+
+	def open_cat(self, name):
+		dev = cat.find_dev(name)
+		r = cat.RIGS[name]
+		if not dev:
+			return self.oops(f"Can't find the {name}.\n\nIs it plugged in and turned on?")
+		try:
+			self.rig = cat.Rig(dev, self.a.baud or r['baud'], self.got.emit, r['att'])
+		except serial.SerialException as e:
+			return self.oops(f"Found the {name} but couldn't open it.\n\n{e}\n\nIs another program (flrig, rigctld, WSJT-X) using it?")
+		try:
+			self.srv = civ.serve_ptt(self.rig, self.a.ptt) if self.a.ptt else None
+		except OSError as e:
+			self.statusBar().showMessage(f'PTT port {self.a.ptt}: {e.strerror}', 10000)
+		self.has_swr = False
+		self.agcs = r['agc']
+		quiet(self.agc, self.agc.clear)
+		quiet(self.agc, self.agc.addItems, list(self.agcs))
+		self.pscale = r['watts']
+		quiet(self.pwr, self.pwr.setRange, self.pscale[0] * 10, self.pscale[1] * 10)
+		self.rig.poll(0)
+		self.smeter.setRange(-54, 60)
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.save, self.bms,
+			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))
+		self.dec.opened(r['audio'])
+		self.levels()
+		self.tx_band(0)
+		self.show_bms()
+		self.on_rig('ptt_clients', 0)
+		return
+	# open_cat
 
 	'''-------------------------------------------------------------------
 		start the rspdx program, which runs the RSPdx through the sdrplay api
@@ -1807,7 +1847,7 @@ class Shack(QMainWindow):
 		if self.rig:
 			if isinstance(self.rig, Rspdx) and self.rig.ok:		# start here next time
 				self.bm.set_last('RSPdx', round(self.rig.state['mhz'] * 1e6), self.rig.state['mode'].upper(), self.rig.settings())
-			if isinstance(self.rig, civ.Rig) and (self.rig.tx or self.pttb.isChecked()):		# the button may be ahead of the radio's report
+			if isinstance(self.rig, (civ.Rig, cat.Rig)) and (self.rig.tx or self.pttb.isChecked()):		# the button may be ahead of the radio's report
 				self.rig.ptt(False)
 			if isinstance(self.rig, civ.Rig) and self.wfb.isChecked():
 				self.rig.send(0x27, 0x11, 0x00)		# scope data off
@@ -1869,10 +1909,15 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def poll(self):
-		if not isinstance(self.rig, civ.Rig):		# rspdx pushes its state; only CI-V needs asking
+		if not isinstance(self.rig, (civ.Rig, cat.Rig)):		# rspdx pushes its state; only CI-V and CAT need asking
 			return
 		if time.monotonic() - self.rig.heard > 3:		# polled 4x a second, so 3 s of silence = gone
 			return self.oops('The radio stopped answering.\n\nUnplugged or turned off?')
+		if isinstance(self.rig, cat.Rig):
+			if time.monotonic() - self.rig.last_set > 0.5:
+				self.rig.poll(self.n)
+				self.n += 1
+			return
 		if time.monotonic() - self.rig.last_set > 0.5:		# stay out of the way of user commands
 			self.rig.send(0x15, 0x02)
 			if self.has_swr:
@@ -1890,7 +1935,7 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def key(self, on):
-		if not isinstance(self.rig, civ.Rig):
+		if not isinstance(self.rig, (civ.Rig, cat.Rig)):
 			return
 		if self.rig.ptt(on) is False:		# refused: outside the ham bands
 			self.pttb.setChecked(False)
