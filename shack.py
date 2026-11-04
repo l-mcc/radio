@@ -63,7 +63,7 @@ HELP = '''
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
-<p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit; switching here, shack puts back that VFO's Preamp, ATT, Roofing, AGC, NB and NR as they were when you left it, which the radio's own A/B key does by itself but a switch over CAT doesn't; the first switch to a VFO after opening keeps the current settings), mode, volume, RF gain, AGC, Preamp (IPO, AMP1, AMP2), ATT (off, 6, 12, 18 dB), Roofing (the radio's R FIL: 12 kHz, 3 kHz, 500 Hz), NB and NR with their levels, S-meter, power and PTT; bookmarks keep Preamp, ATT and Roofing too. Scope sets the radio's own scope (the picture stays on the radio's screen): display mode (3DSS or waterfall, L/N/S size; Center, Cursor or Fix, the Fix edges set on the radio), span, Ref level (-30 to +30 dB) and speed; they follow the radio when you change them there. Right-click the Scope line (its label or between the boxes) for Peak, Color, RBW, Marker and Hold. Power goes from 5 W up to what the radio's own menu allows (TX GENERAL > HF / 50M MAX POWER, and AM MAX POWER in AM); the slider stops there, and its tooltip says the limit. Raise it in the radio's menu. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
+<p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit; switching here, shack puts back that VFO's Preamp, ATT, Roofing, AGC, NB and NR as they were when you left it, which the radio's own A/B key does by itself but a switch over CAT doesn't; the first switch to a VFO after opening keeps the current settings), mode, volume, RF gain, AGC, Preamp (IPO, AMP1, AMP2), ATT (off, 6, 12, 18 dB), Roofing (the radio's R FIL: 12 kHz, 3 kHz, 500 Hz), Display (the radio's screen contrast and brightness and its LED brightness, 0-20), NB and NR with their levels, S-meter, power and PTT; bookmarks keep Preamp, ATT and Roofing too. Scope sets the radio's own scope (the picture stays on the radio's screen): display mode (3DSS or waterfall, L/N/S size; Center, Cursor or Fix, the Fix edges set on the radio), span, Ref level (-30 to +30 dB) and speed; they follow the radio when you change them there. Right-click the Scope line (its label or between the boxes) for Peak, Color, RBW, Marker and Hold. Power goes from 5 W up to what the radio's own menu allows (TX GENERAL > HF / 50M MAX POWER, and AM MAX POWER in AM); the slider stops there, and its tooltip says the limit. Raise it in the radio's menu. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -1557,6 +1557,16 @@ class Shack(QMainWindow):
 		self.roof = QComboBox(toolTip='Roofing filter (R FIL): the first, widest filter. Narrower keeps strong nearby signals out; it should be at least as wide as the mode needs')
 		self.roof.addItems(list(cat.ROOFS))
 		self.roof.activated.connect(lambda i: self.rig and self.rig.set('roof', self.roof.itemText(i)))
+		self.disp = QWidget(toolTip='The radio\'s screen: contrast and brightness, and the brightness of its LEDs, 0-20')		# FTdx10
+		self.da = []
+		h = QHBoxLayout(self.disp)
+		h.setContentsMargins(0, 0, 0, 0)
+		for name in ('Contrast', 'Brightness', 'LED'):
+			w = QSpinBox(minimum=0, maximum=20, keyboardTracking=False, prefix=name + ' ')
+			w.valueChanged.connect(lambda v: self.rig and self.rig.set('da', [x.value() for x in self.da]))
+			self.da.append(w)
+			h.addWidget(w)
+		h.addStretch()
 		h = QHBoxLayout(self.power)
 		h.setContentsMargins(0, 0, 0, 0)
 		h.addWidget(self.pwr)
@@ -1682,7 +1692,7 @@ class Shack(QMainWindow):
 		self.labels = {}		# control: its row label
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
-		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof),
+		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof), ('Display', self.disp),
 				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
@@ -1727,7 +1737,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.smeter, self.swr, self.power, self.pttrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.smeter, self.swr, self.power, self.pttrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -1813,7 +1823,7 @@ class Shack(QMainWindow):
 		self.scope_for(True)
 		self.rig.poll(0)
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.scoperow, self.save, self.bms,
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.scoperow, self.save, self.bms,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))
 		self.dec.opened(r['audio'])
 		self.levels()
@@ -2200,6 +2210,9 @@ class Shack(QMainWindow):
 				quiet(w, w.setCurrentIndex, v)
 		elif k == 'roof':
 			quiet(self.roof, self.roof.setCurrentText, v)
+		elif k == 'da':		# FTdx10 screen and LEDs
+			for w, x in zip(self.da, v):
+				quiet(w, w.setValue, x)
 		elif k == 'pmax':		# FTdx10: its MAX POWER menu caps what PC can set
 			quiet(self.pwr, self.pwr.setMaximum, v * 10)
 			self.pwrv.setText(self.pwr_text(self.pwr.value()))

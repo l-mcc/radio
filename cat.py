@@ -55,7 +55,7 @@ def smeter(v):
 
 class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same face as civ.Rig
 	POLL = 'SM0;TX;'		# every 250 ms
-	SLOW = 'VS;MD0;AG0;RG0;PC;PA0;RA0;RF0;GT0;NB0;NR0;NL0;RL0;' + ''.join(f'EX{k};' for k in MAXW) + ''.join(f'SS0{p};' for p in '01234568') + 'EX040201;'		# every second, so the radio's own knobs show up too
+	SLOW = 'VS;MD0;AG0;RG0;PC;PA0;RA0;RF0;GT0;NB0;NR0;NL0;RL0;' + ''.join(f'EX{k};' for k in MAXW) + ''.join(f'SS0{p};' for p in '01234568') + 'EX040201;DA;'		# every second, so the radio's own knobs show up too
 
 	'''-------------------------------------------------------------------
 		RTS held high: the Enhanced port uses it as flow control, the radio holds its replies while it's low
@@ -184,6 +184,8 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 			self.limit()
 		elif cmd == 'EX' and d[:6] == '040201' and d[6:].isdigit():
 			self.emit('ss.rbw', int(d[6:]))
+		elif cmd == 'DA' and len(d) == 8 and d.isdigit():		# 00, TFT contrast, TFT brightness, LED brightness, 0-20 each
+			self.emit('da', (int(d[2:4]), int(d[4:6]), int(d[6:8])))
 		elif cmd == 'SS' and len(d) >= 3 and d[0] == '0':
 			if d[1] == '4':		# level: signed dB, 0.5 dB steps
 				try:
@@ -271,6 +273,8 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		elif k == 'ref':		# scope level, dB
 			v = max(-30, min(30, round(float(v) * 2) / 2))
 			self.send(f'SS04{v:+05.1f};SS04;')
+		elif k == 'da':		# (contrast, brightness, LED), 0-20
+			self.send('DA00' + ''.join(f'{max(0, min(20, int(x))):02d}' for x in v) + ';DA;')
 		elif k == 'ss.rbw':
 			self.send(f'EX040201{int(v)};EX040201;')
 		elif k.startswith('ss.') and k[3:] in SCOPE:		# index into SPANS, SPEEDS, SCOPEMODES...; on/off for marker and hold
