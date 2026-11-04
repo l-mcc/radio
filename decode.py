@@ -647,7 +647,7 @@ def keyed(a):	# CW: dot 1.2/wpm s, 5 ms raised cosine edges
 
 def psk(a):	# BPSK31: reversals to start, the text, then carrier; a reversal swings the amplitude through zero (cosine)
 	bits = [0] * 32
-	for c in a.text.replace('\r', ''):
+	for c in a.text:
 		if ord(c) < 128:
 			bits += [int(b) for b in VARICODE[ord(c)]] + [0, 0]
 	bits += [1] * 32
