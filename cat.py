@@ -16,6 +16,14 @@ SMETER = [(0, -54), (12, -48), (27, -42), (40, -36), (55, -30), (65, -24), (80, 
 PREAMPS = ['IPO', 'AMP1', 'AMP2']		# PA0 0-2
 ATTS = ['Off', '6 dB', '12 dB', '18 dB']		# RA0 0-3
 ROOFS = {'12 kHz': ('1', '6'), '3 kHz': ('2', '7'), '500 Hz': ('4', '9')}		# RF0: (set value, answer value); 300 Hz is an option filter
+SPANS = ['1 kHz', '2 kHz', '5 kHz', '10 kHz', '20 kHz', '50 kHz', '100 kHz', '200 kHz', '500 kHz', '1 MHz']		# the radio's scope, SS: index = P3
+SPEEDS = ['Slow 1', 'Slow 2', 'Fast 1', 'Fast 2', 'Fast 3']
+SCOPEMODES = ['3DSS Center', '3DSS Cursor', '3DSS Fix', *(f'Waterfall {m} {z}' for m in ('Center', 'Cursor', 'Fix') for z in ('L', 'N', 'S'))]		# 0-B
+PEAKS = [f'LV{i}' for i in range(1, 6)]
+COLORS = [f'Color {i}' for i in range(1, 12)]		# 0-A
+RBWS = ['High', 'Mid', 'Low']		# EX040201: DISPLAY SETTING > SCOPE > RBW
+SCOPE = {'speed': '0', 'peak': '1', 'marker': '2', 'color': '3', 'span': '5', 'mode': '6', 'hold': '8'}		# SS P2 (4 = level: 'ref')
+RSCOPE = {v: k for k, v in SCOPE.items()}
 MAXW = {'030401': 'HF', '030402': '50M', '030404': 'AM'}		# EX menu items: TX GENERAL > HF / 50M / AM MAX POWER, W
 
 RIGS = {		# port: by-id pattern of the CAT port (the CP2105's Enhanced port; if01 is the Standard port, RTS/DTR keying: never opened); audio: ALSA card; top: MHz; agc: GT0 values; watts: PC range
@@ -47,7 +55,7 @@ def smeter(v):
 
 class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same face as civ.Rig
 	POLL = 'SM0;TX;'		# every 250 ms
-	SLOW = 'VS;MD0;AG0;RG0;PC;PA0;RA0;RF0;GT0;NB0;NR0;NL0;RL0;' + ''.join(f'EX{k};' for k in MAXW)		# every second, so the radio's own knobs show up too
+	SLOW = 'VS;MD0;AG0;RG0;PC;PA0;RA0;RF0;GT0;NB0;NR0;NL0;RL0;' + ''.join(f'EX{k};' for k in MAXW) + ''.join(f'SS0{p};' for p in '01234568') + 'EX040201;'		# every second, so the radio's own knobs show up too
 
 	'''-------------------------------------------------------------------
 		RTS held high: the Enhanced port uses it as flow control, the radio holds its replies while it's low
@@ -61,6 +69,7 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		self.wlock = threading.Lock()
 		self.mhz, self.vfo, self.tx, self.mode = 0.0, 'A', 0, ''
 		self.maxw, self.pmax = {}, 0		# the radio's MAX POWER menu limits; the one that applies now
+		self.oddref = None		# an SS04 reply that isn't a number, logged once
 		self.last_set = 0.0		# a ?; is only reported right after a user command
 		self.alive, self.heard = True, time.monotonic()
 		threading.Thread(target=self.reader, daemon=True).start()
@@ -169,6 +178,18 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		elif cmd == 'EX' and d[:6] in MAXW and d[6:].isdigit():
 			self.maxw[MAXW[d[:6]]] = int(d[6:])
 			self.limit()
+		elif cmd == 'EX' and d[:6] == '040201' and d[6:].isdigit():
+			self.emit('ss.rbw', int(d[6:]))
+		elif cmd == 'SS' and len(d) >= 3 and d[0] == '0':
+			if d[1] == '4':		# level: signed dB, 0.5 dB steps
+				try:
+					self.emit('ref', float(d[2:]))
+				except ValueError:
+					if d != self.oddref:
+						log.info(f'SS04 level not a number: {d!r}')
+						self.oddref = d
+			elif d[1] in RSCOPE:
+				self.emit('ss.' + RSCOPE[d[1]], int(d[2], 16))
 		elif cmd == 'GT' and len(d) == 2 and d.isdigit():
 			self.emit('agc', min(int(d[1]), 4))		# 4-6 read back = AUTO (fast, mid, slow)
 		elif cmd == 'NL' and len(d) == 4 and d.isdigit():		# NB level 0-10
@@ -242,6 +263,14 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 			self.send(f'NL0{round(int(v) / 255 * 10):03d};NL0;')
 		elif k == 'nrl':
 			self.send(f'RL0{1 + round(int(v) / 255 * 14):02d};RL0;')
+		elif k == 'ref':		# scope level, dB
+			v = max(-30, min(30, round(float(v) * 2) / 2))
+			self.send(f'SS04{v:+05.1f};SS04;')
+		elif k == 'ss.rbw':
+			self.send(f'EX040201{int(v)};EX040201;')
+		elif k.startswith('ss.') and k[3:] in SCOPE:		# index into SPANS, SPEEDS, SCOPEMODES...; on/off for marker and hold
+			p = SCOPE[k[3:]]
+			self.send(f'SS0{p}{int(v):X}0000;SS0{p};')
 		elif k == 'fil':		# a bookmark from a CI-V radio; the FTdx10's widths aren't presets
 			pass
 		else:

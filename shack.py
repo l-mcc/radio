@@ -63,7 +63,7 @@ HELP = '''
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
-<p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit), mode, volume, RF gain, AGC, Preamp (IPO, AMP1, AMP2), ATT (off, 6, 12, 18 dB), Roofing (the radio's R FIL: 12 kHz, 3 kHz, 500 Hz), NB and NR with their levels, S-meter, power and PTT; bookmarks keep Preamp, ATT and Roofing too. Power goes from 5 W up to what the radio's own menu allows (TX GENERAL > HF / 50M MAX POWER, and AM MAX POWER in AM); the slider stops there, and its tooltip says the limit. Raise it in the radio's menu. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
+<p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit), mode, volume, RF gain, AGC, Preamp (IPO, AMP1, AMP2), ATT (off, 6, 12, 18 dB), Roofing (the radio's R FIL: 12 kHz, 3 kHz, 500 Hz), NB and NR with their levels, S-meter, power and PTT; bookmarks keep Preamp, ATT and Roofing too. Scope sets the radio's own scope (the picture stays on the radio's screen): display mode (3DSS or waterfall, L/N/S size; Center, Cursor or Fix, the Fix edges set on the radio), span, Ref level (-30 to +30 dB) and speed; they follow the radio when you change them there. Right-click the Scope line (its label or between the boxes) for Peak, Color, RBW, Marker and Hold. Power goes from 5 W up to what the radio's own menu allows (TX GENERAL > HF / 50M MAX POWER, and AM MAX POWER in AM); the slider stops there, and its tooltip says the limit. Raise it in the radio's menu. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -1656,12 +1656,22 @@ class Shack(QMainWindow):
 		self.span.activated.connect(lambda i: self.rig and self.rig.set('span', civ.SPANS[i]))
 		self.ref = QDoubleSpinBox(minimum=-20, maximum=20, singleStep=0.5, decimals=1, suffix=' dB', keyboardTracking=False, toolTip='Scope reference level: lower shows weak signals brighter')
 		self.ref.valueChanged.connect(lambda v: self.rig and self.rig.set('ref', v))
+		self.ft = {}		# FTdx10: its own scope's settings (shown on the radio), SS item: combo
+		for k, items, tip in (('mode', cat.SCOPEMODES, 'The radio\'s scope display: 3DSS or waterfall (L, N, S = size); Center, Cursor or Fix (the Fix edges are set on the radio)'),
+				('span', cat.SPANS, 'The radio\'s scope width'), ('speed', cat.SPEEDS, 'The radio\'s scope sweep speed')):
+			c = self.ft[k] = QComboBox(toolTip=tip)
+			c.addItems(items)
+			c.activated.connect(lambda i, k=k: self.rig and self.rig.set('ss.' + k, i))
+		self.ss = {}		# FTdx10 scope items in the right-click menu: last value the radio reported
 		h = QHBoxLayout(self.scoperow)
 		h.setContentsMargins(0, 0, 0, 0)
 		h.addWidget(self.wfb)
 		h.addWidget(self.span)
+		h.addWidget(self.ft['mode'])
+		h.addWidget(self.ft['span'])
 		h.addWidget(QLabel('Ref'))
 		h.addWidget(self.ref)
+		h.addWidget(self.ft['speed'])
 		self.wfp = QPushButton('Pause', checkable=True, toolTip='Freeze the waterfall and the spectrum strip (for a closer look); click again to go on')
 		h.addWidget(self.wfp)
 		h.addStretch()
@@ -1691,6 +1701,9 @@ class Shack(QMainWindow):
 		g.addLayout(more, row, 0, 1, 3)
 		row += 1
 		self.labels[self.scoperow] = QLabel('Scope')		# under the buttons: the waterfall is tall
+		for w in (self.scoperow, self.labels[self.scoperow]):		# FTdx10: more scope settings
+			w.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+			w.customContextMenuRequested.connect(lambda pos, w=w: self.scope_menu(w.mapToGlobal(pos)))
 		g.addWidget(self.labels[self.scoperow], row, 0)
 		g.addWidget(self.scoperow, row, 1, 1, 2)
 		row += 1
@@ -1760,6 +1773,7 @@ class Shack(QMainWindow):
 		lo, hi = (0, 100) if not self.pscale else (self.pscale[0] * 10, self.pscale[1] * 10)		# % or tenths of a watt
 		quiet(self.pwr, self.pwr.setRange, lo, hi)
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
+		self.scope_for(False)
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
 		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, *([self.scoperow] if r['scope'] else []), self.save, self.bms,
@@ -1795,9 +1809,10 @@ class Shack(QMainWindow):
 		quiet(self.agc, self.agc.addItems, list(self.agcs))
 		self.pscale = r['watts']
 		quiet(self.pwr, self.pwr.setRange, self.pscale[0] * 10, self.pscale[1] * 10)
+		self.scope_for(True)
 		self.rig.poll(0)
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.save, self.bms,
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.scoperow, self.save, self.bms,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))
 		self.dec.opened(r['audio'])
 		self.levels()
@@ -1806,6 +1821,49 @@ class Shack(QMainWindow):
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_cat
+
+	'''-------------------------------------------------------------------
+		the Scope line: the 705's waterfall controls, or the FTdx10's settings for its own scope
+	-------------------------------------------------------------------'''
+
+	def scope_for(self, ft):
+		for w in (self.wfb, self.span, self.wfp):
+			w.setVisible(not ft)
+		for w in self.ft.values():
+			w.setVisible(ft)
+		quiet(self.ref, self.ref.setRange, *((-30, 30) if ft else (-20, 20)))
+		self.ref.setToolTip('The radio\'s scope level: lower shows weak signals brighter' if ft else 'Scope reference level: lower shows weak signals brighter')
+		self.ss = {}
+		return
+	# scope_for
+
+	'''-------------------------------------------------------------------
+		right-click the Scope line (FTdx10): peak, color, RBW, marker, hold
+	-------------------------------------------------------------------'''
+
+	def scope_menu(self, at):
+		if not isinstance(self.rig, cat.Rig):
+			return
+		menu = QMenu(self)
+		acts = {}
+		for k, name, items in (('peak', 'Peak', cat.PEAKS), ('color', 'Color', cat.COLORS), ('rbw', 'RBW', cat.RBWS)):
+			sub = menu.addMenu(name)
+			for i, t in enumerate(items):
+				a = sub.addAction(t)
+				a.setCheckable(True)
+				a.setChecked(self.ss.get(k) == i)
+				acts[a] = (k, i)
+		for k, name in (('marker', 'Marker'), ('hold', 'Hold')):
+			a = menu.addAction(name)
+			a.setCheckable(True)
+			a.setChecked(bool(self.ss.get(k)))
+			acts[a] = (k, int(not self.ss.get(k)))
+		act = menu.exec(at)
+		if act in acts:
+			k, v = acts[act]
+			self.rig.set('ss.' + k, v)
+		return
+	# scope_menu
 
 	'''-------------------------------------------------------------------
 		start the rspdx program, which runs the RSPdx through the sdrplay api
@@ -2161,8 +2219,13 @@ class Shack(QMainWindow):
 			self.wf.add(v)
 		elif k == 'span' and v in civ.SPANS and self.span.currentIndex() != civ.SPANS.index(v):
 			quiet(self.span, self.span.setCurrentIndex, civ.SPANS.index(v))
-		elif k == 'ref' and isinstance(self.rig, civ.Rig):
+		elif k == 'ref' and isinstance(self.rig, (civ.Rig, cat.Rig)):
 			quiet(self.ref, self.ref.setValue, v)
+		elif k.startswith('ss.'):		# FTdx10 scope settings
+			self.ss[k[3:]] = v
+			c = self.ft.get(k[3:])
+			if c and 0 <= v < c.count():
+				quiet(c, c.setCurrentIndex, v)
 		return
 	# on_rig
 
