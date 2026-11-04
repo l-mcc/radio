@@ -1036,10 +1036,10 @@ class Wsjt:		# FT4 / FT8 by WSJT-X's jt9, WSPR by its wsprd: each period's audio
 				w = msg.split()
 				if w and w[-1].lstrip('-').isdigit():		# power, dBm
 					msg += f' dBm ({self.watts(int(w[-1]))})'
-				self.add(f'{self.stamp}  {int(snr):+3d} dB  {float(dt):+.1f} s  {round(float(mhz) * 1e6):4d} Hz  {int(drift):+d}  {msg}{self.far(msg)}\n')
+				self.add(f'{self.stamp}  {int(snr):+3d} dB  {float(dt):+.1f} s  {round(float(mhz) * 1e6):4d} Hz  {int(drift):+d}  {self.pad(msg, 30)}\n')
 			else:
 				snr, dt, hz, msg = m.groups()
-				self.add(f'{self.stamp}  {int(snr):+3d} dB  {float(dt):+.1f} s  {int(hz):4d} Hz  {msg}{self.far(msg)}\n')
+				self.add(f'{self.stamp}  {int(snr):+3d} dB  {float(dt):+.1f} s  {int(hz):4d} Hz  {self.pad(msg, 24)}\n')
 			self.got += 1
 		return
 	# done
@@ -1050,7 +1050,11 @@ class Wsjt:		# FT4 / FT8 by WSJT-X's jt9, WSPR by its wsprd: each period's audio
 		if not ll:
 			return ''
 		mi, brg = path(self.home, ll)
-		return f'   {mi:,.0f} mi  {brg:.0f}°'
+		return f'{mi:6,.0f} mi  {brg:3.0f}°'
+
+	def pad(self, msg, n):		# the message, then its distance and bearing in a column (n: usual message width)
+		f = self.far(msg)
+		return f'{msg:<{n}}  {f}' if f else msg
 
 	def watts(self, dbm):
 		w = 10 ** (dbm / 10) / 1000
@@ -1958,8 +1962,8 @@ class Shack(QMainWindow):
 		box = QWidget()
 		box.setLayout(g)
 		main = QHBoxLayout()
-		main.addWidget(box, 3)
-		main.addWidget(self.bms, 2)
+		main.addWidget(box, 2)		# decoded lines get the wider share; the bookmarks' Name column gives it up
+		main.addWidget(self.bms, 1)
 		top = QWidget()
 		top.setLayout(main)
 		self.setCentralWidget(top)
