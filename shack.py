@@ -56,7 +56,7 @@ HELP = '''
 <p>Pick RTTY, CW, VARA, Packet or JS8. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; Off and closing shack leave it running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
-<p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Right-click: rename (empty = band label) or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
+<p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
@@ -320,11 +320,6 @@ class Freq(QWidget):		# frequency readout that works like the waterfall page's: 
 ==================================================================================================================================================='''
 
 class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a row keeps settings per radio, {radio: {key: value}}
-	BANDS = ((1.8, 2.0, '160m'), (3.5, 4.0, '80m'), (5.33, 5.41, '60m'), (7.0, 7.3, '40m'), (10.1, 10.15, '30m'), (14.0, 14.35, '20m'),
-		(18.068, 18.168, '17m'), (21.0, 21.45, '15m'), (24.89, 24.99, '12m'), (28.0, 29.7, '10m'), (50.0, 54.0, '6m'),
-		(0.53, 1.71, 'MW'), (2.3, 2.495, '120m SW'), (3.2, 3.4, '90m SW'), (4.75, 5.06, '60m SW'), (5.9, 6.2, '49m SW'), (7.2, 7.6, '41m SW'),
-		(9.4, 9.9, '31m SW'), (11.6, 12.1, '25m SW'), (13.57, 13.87, '22m SW'), (15.1, 15.8, '19m SW'), (17.48, 17.9, '16m SW'),
-		(18.9, 19.02, '15m SW'), (21.45, 21.85, '13m SW'), (25.67, 26.1, '11m SW'), (26.965, 27.405, 'CB'), (118.0, 137.0, 'Air'), (87.5, 108.0, 'FM'))		# MHz, first match wins; as control.cpp has them
 
 	'''-------------------------------------------------------------------
 		opens (or makes) the database; a new one gets rspdx's settings.db rows copied in
@@ -362,32 +357,29 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 	# copy_rspdx
 
 	'''-------------------------------------------------------------------
-		all bookmarks, most picked first; an empty name shows its band label
+		all bookmarks, most picked first
 	-------------------------------------------------------------------'''
 
 	def list(self):
 		out = []
 		for hz, mode, name, hits, s in self.db.execute('SELECT hz, mode, name, hits, settings FROM bookmarks ORDER BY hits DESC, hz'):
-			out.append(dict(hz=hz, mode=mode, name=name or self.band(hz), hits=hits, settings=json.loads(s)))
+			out.append(dict(hz=hz, mode=mode, name=name, hits=hits, settings=json.loads(s)))
 		return out
 	# list
-
-	def band(self, hz):
-		return next((n for lo, hi, n in self.BANDS if lo <= hz / 1e6 < hi), '')
 
 	def find(self, hz, mode):
 		return next((b for b in self.list() if b['hz'] == hz and b['mode'] == mode), None)
 
 	'''-------------------------------------------------------------------
-		Save: adds the bookmark, or updates this radio's settings in it (other radios' settings, name and hits stay)
+		Save: adds the bookmark with its name, or updates this radio's settings in it (other radios' settings, name and hits stay)
 	-------------------------------------------------------------------'''
 
-	def save(self, radio, hz, mode, settings):
+	def save(self, radio, hz, mode, settings, name=''):
 		b = self.find(hz, mode)
 		s = b['settings'] if b else {}
 		s[radio] = settings
-		self.db.execute('INSERT INTO bookmarks (hz, mode, settings) VALUES (?, ?, ?) ON CONFLICT (hz, mode) DO UPDATE SET settings = excluded.settings, updated = CURRENT_TIMESTAMP',
-			(hz, mode, json.dumps(s)))
+		self.db.execute('INSERT INTO bookmarks (hz, mode, name, settings) VALUES (?, ?, ?, ?) ON CONFLICT (hz, mode) DO UPDATE SET settings = excluded.settings, updated = CURRENT_TIMESTAMP',
+			(hz, mode, name, json.dumps(s)))
 		self.db.commit()
 		return
 	# save
@@ -396,7 +388,7 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 		self.db.execute('UPDATE bookmarks SET hits = hits + 1 WHERE hz = ? AND mode = ?', (b['hz'], b['mode']))
 		self.db.commit()
 
-	def rename(self, b, name):		# '' goes back to the band label
+	def rename(self, b, name):
 		self.db.execute('UPDATE bookmarks SET name = ? WHERE hz = ? AND mode = ?', (name, b['hz'], b['mode']))
 		self.db.commit()
 
@@ -1840,7 +1832,7 @@ class Shack(QMainWindow):
 		dele = menu.addAction('Delete')
 		act = menu.exec(self.bms.viewport().mapToGlobal(pos))
 		if act == ren:
-			name, ok = QInputDialog.getText(self, 'Rename bookmark', 'Name (empty = band label):', text=b['name'])
+			name, ok = QInputDialog.getText(self, 'Rename bookmark', 'Name:', text=b['name'])
 			if ok:
 				self.bm.rename(b, name.strip())
 		elif act == dele:
@@ -1896,7 +1888,12 @@ class Shack(QMainWindow):
 		if not self.rig:
 			return
 		radio, hz, mode, s = self.radio.currentText(), self.freq.hz, self.mode.currentText(), self.settings()
-		self.bm.save(radio, hz, mode, s)
+		name = ''
+		if not self.bm.find(hz, mode):		# a new one: ask for its name; an existing one keeps its own
+			name, ok = QInputDialog.getText(self, 'Save bookmark', f'Name for {hz / 1e6:.6f} {mode}:')
+			if not ok:
+				return
+		self.bm.save(radio, hz, mode, s, name.strip())
 		if isinstance(self.rig, Rspdx):		# a CI-V radio remembers where it was by itself
 			self.bm.set_last(radio, hz, mode, s)
 		self.show_bms()
