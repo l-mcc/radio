@@ -63,7 +63,7 @@ HELP = '''
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
-<p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit), mode, volume, RF gain, AGC, Preamp (IPO, AMP1, AMP2), ATT (off, 6, 12, 18 dB), Roofing (the radio's R FIL: 12 kHz, 3 kHz, 500 Hz), NB and NR with their levels, S-meter, power and PTT; bookmarks keep Preamp, ATT and Roofing too. Scope sets the radio's own scope (the picture stays on the radio's screen): display mode (3DSS or waterfall, L/N/S size; Center, Cursor or Fix, the Fix edges set on the radio), span, Ref level (-30 to +30 dB) and speed; they follow the radio when you change them there. Right-click the Scope line (its label or between the boxes) for Peak, Color, RBW, Marker and Hold. Power goes from 5 W up to what the radio's own menu allows (TX GENERAL > HF / 50M MAX POWER, and AM MAX POWER in AM); the slider stops there, and its tooltip says the limit. Raise it in the radio's menu. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
+<p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit; switching here, shack puts back that VFO's Preamp, ATT, Roofing, AGC, NB and NR as they were when you left it, which the radio's own A/B key does by itself but a switch over CAT doesn't; the first switch to a VFO after opening keeps the current settings), mode, volume, RF gain, AGC, Preamp (IPO, AMP1, AMP2), ATT (off, 6, 12, 18 dB), Roofing (the radio's R FIL: 12 kHz, 3 kHz, 500 Hz), NB and NR with their levels, S-meter, power and PTT; bookmarks keep Preamp, ATT and Roofing too. Scope sets the radio's own scope (the picture stays on the radio's screen): display mode (3DSS or waterfall, L/N/S size; Center, Cursor or Fix, the Fix edges set on the radio), span, Ref level (-30 to +30 dB) and speed; they follow the radio when you change them there. Right-click the Scope line (its label or between the boxes) for Peak, Color, RBW, Marker and Hold. Power goes from 5 W up to what the radio's own menu allows (TX GENERAL > HF / 50M MAX POWER, and AM MAX POWER in AM); the slider stops there, and its tooltip says the limit. Raise it in the radio's menu. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -1566,12 +1566,13 @@ class Shack(QMainWindow):
 		self.rfg = QSpinBox(minimum=0, maximum=100, singleStep=5, suffix=' %', keyboardTracking=False, toolTip='The radio\'s RF gain; 100 % = full gain')
 		self.rfg.valueChanged.connect(lambda v: self.rig and self.rig.set('rfg', round(v * 2.55)))
 		self.vfo = {}		# A, B: which one the radio listens on; neither lit until one is picked (CI-V can't ask the radio)
+		self.vfomem, self.vfo_on, self.vfo_t = {}, None, 0.0		# FTdx10: each VFO's settings as last seen, the VFO it reports, when that last changed
 		self.vforow = QWidget(toolTip='The radio\'s VFO A or B. CI-V can\'t read which one the radio is on, so neither is lit until you pick one here')
 		h = QHBoxLayout(self.vforow)
 		h.setContentsMargins(0, 0, 0, 0)
 		for k in ('A', 'B'):
 			b = self.vfo[k] = QPushButton(f'VFO {k}', checkable=True)
-			b.clicked.connect(lambda on, k=k: self.rig and self.rig.set('vfo', k))
+			b.clicked.connect(lambda on, k=k: self.pick_vfo(k))
 			h.addWidget(b)
 		h.addStretch()
 		self.ifr = QSpinBox(minimum=20, maximum=59, suffix=' dB', keyboardTracking=False)		# IF gain reduction
@@ -1911,6 +1912,7 @@ class Shack(QMainWindow):
 	def shut(self):
 		self.ptt_limit.stop()
 		self.dec.closed()
+		self.vfomem, self.vfo_on = {}, None
 		if self.rig:
 			if isinstance(self.rig, Rspdx) and self.rig.ok:		# start here next time
 				self.bm.set_last('RSPdx', round(self.rig.state['mhz'] * 1e6), self.rig.state['mode'].upper(), self.rig.settings())
@@ -1984,6 +1986,8 @@ class Shack(QMainWindow):
 			if time.monotonic() - self.rig.last_set > 0.5:
 				self.rig.poll(self.n)
 				self.n += 1
+			if self.vfo_on and time.monotonic() - self.vfo_t > 2:		# the controls have caught up with this VFO: remember them
+				self.vfomem[self.vfo_on] = self.vfo_settings()
 			return
 		if time.monotonic() - self.rig.last_set > 0.5:		# stay out of the way of user commands
 			self.rig.send(0x15, 0x02)
@@ -1996,6 +2000,29 @@ class Shack(QMainWindow):
 					self.rig.send(*civ.CTL[k])
 				self.rig.send(0x11)		# attenuator
 			self.n += 1
+
+	'''-------------------------------------------------------------------
+		VFO A/B buttons. FTdx10: a CAT switch doesn't load the VFO's own settings as the radio's A/B key does,
+		so shack keeps each VFO's settings and puts them back (known after the first visit to that VFO)
+	-------------------------------------------------------------------'''
+
+	VFOKEEP = ('pa', 'ra', 'roof', 'agc', 'nb', 'nr', 'nbl', 'nrl')
+
+	def pick_vfo(self, k):
+		if not self.rig:
+			return
+		ft = isinstance(self.rig, cat.Rig)
+		if ft and self.vfo_on and k != self.vfo_on and time.monotonic() - self.vfo_t > 2:
+			self.vfomem[self.vfo_on] = self.vfo_settings()
+		self.rig.set('vfo', k)
+		if ft and k != self.vfo_on and k in self.vfomem:
+			self.apply('', self.vfomem[k])
+		self.vfo_t = time.monotonic()
+		return
+	# pick_vfo
+
+	def vfo_settings(self):
+		return {k: v for k, v in self.settings().items() if k in self.VFOKEEP}
 
 	'''-------------------------------------------------------------------
 		PTT button: key or unkey; keying starts the 30 s limit
@@ -2157,9 +2184,11 @@ class Shack(QMainWindow):
 			quiet(self.lvl[k[:2]], self.lvl[k[:2]].setValue, round(v / 2.55))
 		elif k == 'rfg':		# CI-V RF gain 0-255
 			quiet(self.rfg, self.rfg.setValue, round(v / 2.55))
-		elif k == 'vfo':		# what civ last set; the radio can't be asked
+		elif k == 'vfo':		# CI-V: what civ last set (the radio can't be asked); FTdx10: what the radio reports
 			for x, b in self.vfo.items():
 				b.setChecked(x == v)
+			if v != self.vfo_on:		# the controls still show the other VFO for a moment
+				self.vfo_on, self.vfo_t = v, time.monotonic()
 		elif k == 'pwr' and not self.pwr.isSliderDown():		# CI-V RF power 0-255, None when the radio sends junk
 			if v is None:
 				return self.pwrv.setText('?')
