@@ -314,6 +314,7 @@ class Psk:	# BPSK31: decoder(x) -> (text, new station)
 		s.lp3 = Fir(lowpass(20, PSR, 129))	# about the signal's own width
 		s.en = np.zeros(s.SPS)	# envelope at each of the 32 sample times in a symbol: the loudest is the middle of the symbol
 		s.n, s.best, s.prev, s.code, s.q = 0, 0, 0j, 0, 0.0	# best: the sample time in the symbol to decide on, picked once a symbol
+		s.cr = False	# last character was CR: senders end lines with CR LF, CR alone or LF alone
 		s.op, s.said = False, None
 	def tune(s, f):	# None = auto
 		s.tu.fixed = f is not None
@@ -336,7 +337,11 @@ class Psk:	# BPSK31: decoder(x) -> (text, new station)
 		s.code = (s.code << 1) | int(d.real > 0)
 		if s.code & 3 == 0:	# 00: end of a character
 			c, s.code = UNVARI.get(s.code >> 2, ''), 0
-			return c if c == '\n' or c.isprintable() else ''
+			lf = c == '\n' and s.cr		# the LF of a CR LF: already a new line
+			s.cr = c == '\r'
+			if s.cr:
+				return '\n'
+			return '' if lf else c if c == '\n' or c.isprintable() else ''
 		if s.code >= 1 << 12:	# longer than any code: noise
 			s.code = 0
 		return ''
