@@ -60,7 +60,7 @@ HELP = '''
 
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
-<p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there. Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
+<p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -686,7 +686,7 @@ class Waterfall(QWidget):		# a CI-V radio's own band scope (27 00 data): spectru
 	STOPS = ((0, '#000000'), (30, '#000050'), (60, '#0000ff'), (85, '#00e0ff'), (110, '#ffff00'), (135, '#ff0000'), (160, '#ffffff'))		# level: color
 
 	'''-------------------------------------------------------------------
-		tune(mhz): what a click does
+		tune(hz, center): what a click does; center = Shift held (Shack.wf_click)
 	-------------------------------------------------------------------'''
 
 	def __init__(self, tune):
@@ -694,7 +694,7 @@ class Waterfall(QWidget):		# a CI-V radio's own band scope (27 00 data): spectru
 		self.tune = tune
 		self.setFixedHeight(self.SPEC + self.ROWS + 14)		# bottom 14 px: kHz labels
 		self.setCursor(Qt.CursorShape.CrossCursor)
-		self.setToolTip('The radio\'s band scope. Click: tune there.  Red line: the dial')
+		self.setToolTip('The radio\'s band scope. Click: tune there.  Shift-click: tune so that signal lands at 1500 Hz audio (VARA, ARDOP, the decoders\' middle).  Red line: the dial')
 		self.lo, self.hi, self.dial = 0, 0, 0		# Hz across the width, Hz of the dial
 		self.n = 0		# points per sweep
 		self.rows = bytearray()		# newest sweep first, ROWS * n levels
@@ -783,14 +783,14 @@ class Waterfall(QWidget):		# a CI-V radio's own band scope (27 00 data): spectru
 	# paintEvent
 
 	'''-------------------------------------------------------------------
-		click: tune there, to 10 Hz on narrow spans, 100 Hz on wide ones
+		click: the frequency under the mouse, to 10 Hz on narrow spans, 100 Hz on wide ones
 	-------------------------------------------------------------------'''
 
 	def mousePressEvent(self, e):
 		if self.n and e.button() == Qt.MouseButton.LeftButton:
 			hz = self.lo + e.position().x() / self.width() * (self.hi - self.lo)
 			snap = 10 if self.hi - self.lo <= 20000 else 100
-			self.tune(round(hz / snap) * snap / 1e6)
+			self.tune(round(hz / snap) * snap, bool(e.modifiers() & Qt.KeyboardModifier.ShiftModifier))
 		return
 	# mousePressEvent
 
@@ -1574,7 +1574,7 @@ class Shack(QMainWindow):
 		h.addStretch()
 		self.clients = QLabel()
 		self.statusBar().addPermanentWidget(self.clients)
-		self.wf = Waterfall(lambda mhz: self.rig and self.rig.set('mhz', mhz))		# CI-V band scope, shown while wfb is on
+		self.wf = Waterfall(self.wf_click)		# CI-V band scope, shown while wfb is on
 		self.scoperow = QWidget()		# Waterfall button, span, ref level
 		self.wfb = QPushButton('Waterfall', checkable=True, toolTip='The radio\'s band scope, sent over CI-V')
 		self.wfb.clicked.connect(self.set_wf)
@@ -1856,6 +1856,24 @@ class Shack(QMainWindow):
 			self.key(False)
 		return
 	# tx_band
+
+	'''-------------------------------------------------------------------
+		waterfall click: the dial there; Shift: the dial 1500 Hz below it in USB (above in LSB), so the signal sits mid-passband
+	-------------------------------------------------------------------'''
+
+	AUDIO = 1500		# Hz: where VARA and ARDOP sit, middle of the decoders' range
+
+	def wf_click(self, hz, center):
+		if not self.rig:
+			return
+		m = self.mode.currentText()
+		if center and m.startswith('USB'):
+			hz -= self.AUDIO
+		elif center and m.startswith('LSB'):
+			hz += self.AUDIO
+		self.rig.set('mhz', hz / 1e6)
+		return
+	# wf_click
 
 	'''-------------------------------------------------------------------
 		either Pause button: waterfall and spectrum strip freeze together, both buttons show it
