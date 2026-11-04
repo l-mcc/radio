@@ -201,9 +201,9 @@ class Freq(QWidget):		# frequency readout that works like the waterfall page's: 
 
 	def paintEvent(self, e):
 		p = QPainter(self)
-		ink = self.palette().color(QPalette.ColorRole.WindowText)
+		ink = self.palette().color(QPalette.ColorGroup.Active, QPalette.ColorRole.WindowText)		# not the current group: some themes grey the inactive one (window without focus)
 		dim = QColor('#a0a0a0')
-		shade = QColor(self.palette().color(QPalette.ColorRole.Highlight))
+		shade = QColor(self.palette().color(QPalette.ColorGroup.Active, QPalette.ColorRole.Highlight))
 		shade.setAlpha(50)
 		h = self.height()
 		if self.typed is not None:		# typing: show what's typed, nothing else
