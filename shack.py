@@ -60,10 +60,10 @@ HELP = '''
 
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
-<p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
+<p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there. Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>Spectrum</h3>
-<p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip (for a screenshot) until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
+<p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
 
 <p><i>F1 opens this help.</i></p>
 '''
@@ -698,6 +698,7 @@ class Waterfall(QWidget):		# a CI-V radio's own band scope (27 00 data): spectru
 		self.lo, self.hi, self.dial = 0, 0, 0		# Hz across the width, Hz of the dial
 		self.n = 0		# points per sweep
 		self.rows = bytearray()		# newest sweep first, ROWS * n levels
+		self.paused = False		# Pause: sweeps are dropped, the picture stays
 		self.colors = self.table()
 		return
 	# __init__
@@ -723,7 +724,7 @@ class Waterfall(QWidget):		# a CI-V radio's own band scope (27 00 data): spectru
 	def add(self, v):
 		lo, hi = struct.unpack('<II', v[:8])
 		d = v[8:]
-		if len(d) < 2:
+		if len(d) < 2 or self.paused:
 			return
 		if len(d) != self.n or hi - lo != self.hi - self.lo:
 			self.n, self.rows = len(d), bytearray(len(d) * self.ROWS)
@@ -736,6 +737,10 @@ class Waterfall(QWidget):		# a CI-V radio's own band scope (27 00 data): spectru
 
 	def clear(self):
 		self.n, self.rows = 0, bytearray()
+		self.update()
+
+	def pause(self, on):
+		self.paused = on
 		self.update()
 
 	def px(self, hz):
@@ -955,8 +960,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		h.setContentsMargins(4, 2, 4, 2)
 		h.addWidget(self.pick)
 		h.addWidget(self.sql)
-		self.pauseb = QPushButton('Pause', checkable=True, toolTip='Freeze the spectrum strip (for a screenshot); click again to go on. Decoding carries on')
-		self.pauseb.clicked.connect(lambda on: self.spec.pause(on))
+		self.pauseb = QPushButton('Pause', checkable=True, toolTip='Freeze the spectrum strip and the waterfall (for a closer look); click again to go on. Decoding carries on')		# Shack.freeze
 		h.addWidget(self.pauseb)
 		h.addWidget(self.status, 1)
 		self.text = QPlainTextEdit(readOnly=True, toolTip='Decoded text. Scroll up to read back; right-click for Clear and settings')
@@ -1129,8 +1133,6 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 	def closed(self):		# the radio is being closed
 		self.ready = False
 		self.off()
-		self.pauseb.setChecked(False)
-		self.spec.pause(False)
 		return
 
 	def died(self, why):		# the decoder program stopped by itself
@@ -1587,7 +1589,11 @@ class Shack(QMainWindow):
 		h.addWidget(self.span)
 		h.addWidget(QLabel('Ref'))
 		h.addWidget(self.ref)
+		self.wfp = QPushButton('Pause', checkable=True, toolTip='Freeze the waterfall and the spectrum strip (for a closer look); click again to go on')
+		h.addWidget(self.wfp)
 		h.addStretch()
+		for b in (self.wfp, self.dec.pauseb):
+			b.clicked.connect(self.freeze)
 
 		self.labels = {}		# control: its row label
 		g = QGridLayout()
@@ -1764,6 +1770,7 @@ class Shack(QMainWindow):
 		quiet(self.fil, self.fil.setCurrentIndex, -1)
 		for b in (*self.sw.values(), *self.vfo.values(), self.wfb):
 			b.setChecked(False)
+		self.freeze(False)
 		self.wf.clear()
 		self.on_rig('ptt', 0)
 		self.only(())
@@ -1851,6 +1858,18 @@ class Shack(QMainWindow):
 	# tx_band
 
 	'''-------------------------------------------------------------------
+		either Pause button: waterfall and spectrum strip freeze together, both buttons show it
+	-------------------------------------------------------------------'''
+
+	def freeze(self, on):
+		for b in (self.wfp, self.dec.pauseb):
+			b.setChecked(on)
+		self.wf.pause(on)
+		self.dec.spec.pause(on)
+		return
+	# freeze
+
+	'''-------------------------------------------------------------------
 		Waterfall button: the radio's scope on, centered on the dial, its data over CI-V; off stops the data
 	-------------------------------------------------------------------'''
 
@@ -1865,6 +1884,7 @@ class Shack(QMainWindow):
 		else:
 			self.rig.send(0x27, 0x11, 0x00)
 			self.wf.clear()
+			self.freeze(False)
 		self.wf.setVisible(on)
 		return
 	# set_wf
