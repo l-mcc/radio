@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, logging, os, re, shutil, signal, socket, sqlite3, struct, subprocess, sys, tempfile, time
+import argparse, json, logging, os, re, shutil, signal, socket, sqlite3, struct, subprocess, sys, tempfile, time, wave
 from pathlib import Path
 
 import serial
@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder</h3>
-<p>Pick RTTY, CW, VARA, Packet or JS8. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, VARA, Packet, JS8, FT4 or FT8. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -906,6 +906,132 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 
 ==================================================================================================================================================='''
 
+class Wsjt:		# FT4 / FT8 by WSJT-X's jt9: each period's audio (on the UTC clock) to a 12 kHz WAV, jt9 decodes it. Same face as decode.Rtty / Cw
+	RATE, OUT = 48000, 12000		# audio in, jt9's rate
+	PERIOD = {'FT4': 7.5, 'FT8': 15.0}
+	FLAG = {'FT4': '-5', 'FT8': '-8'}
+	LINE = re.compile(r'^\d{6}\s+(-?\d+)\s+(-?[\d.]+)\s+(\d+)\s+[~+]\s+(.*?)\s*$')		# hhmmss snr dt freq ~ message
+	TAPS = np.sinc(2 * 4800 / RATE * (np.arange(101) - 50)) * np.hamming(101) * 2 * 4800 / RATE		# low-pass before taking every 4th sample
+
+	'''-------------------------------------------------------------------
+		add(text): decoded lines to the box; gone(why): jt9 can't run
+	-------------------------------------------------------------------'''
+
+	def __init__(self, kind, add, gone):
+		self.kind, self.add, self.gone = kind, add, gone
+		self.period = self.PERIOD[kind]
+		self.band = (200, 3000)		# jt9 looks across the whole passband
+		self.tu = decode.Tuner(None, 99, 0, 4)		# spectrum only
+		self.op = False
+		self.dir = tempfile.mkdtemp(prefix='shack-jt9-')		# its WAVs, decoded.txt, FFTW wisdom
+		self.buf, self.t0, self.n = np.zeros(0, np.float32), None, 0		# audio kept; UTC of sample 0 of the stream; samples so far
+		self.base = 0		# stream index of buf[0]
+		self.next = None		# start (UTC) of the next period to decode
+		self.p, self.got, self.when, self.skipped = None, 0, '', 0		# jt9 running; decodes in its last period, that period's time; periods skipped (jt9 still busy)
+		return
+	# __init__
+
+	'''-------------------------------------------------------------------
+		audio in. The stream's clock is pinned to UTC by when the audio arrives: the earliest arrival seen
+		(least delay) sets it, a later one pulls it slowly (the sound card's clock drifts against the computer's)
+	-------------------------------------------------------------------'''
+
+	def __call__(self, x):
+		self.tu(x)
+		self.n += len(x)
+		a = time.time() - self.n / self.RATE
+		self.t0 = a if self.t0 is None or a < self.t0 else self.t0 + (a - self.t0) * 0.01
+		self.buf = np.concatenate((self.buf, x.astype(np.float32)))
+		if self.next is None:		# the first whole period after starting
+			self.next = (int((self.t0 + self.base / self.RATE) / self.period) + 1) * self.period
+		end = self.t0 + (self.base + len(self.buf)) / self.RATE
+		if end >= self.next + self.period:
+			self.decode(self.next)
+			self.next += self.period
+			if end >= self.next + self.period:		# fell behind (window stalled): skip to the current period
+				self.next = (int(end / self.period) - 1) * self.period
+		keep = int(2 * self.period * self.RATE)
+		if len(self.buf) > keep:
+			self.base += len(self.buf) - keep
+			self.buf = self.buf[-keep:]
+		return '', False
+	# __call__
+
+	'''-------------------------------------------------------------------
+		the period starting at t (UTC) to a WAV named for its time (jt9 prints that time), and jt9 on it
+	-------------------------------------------------------------------'''
+
+	def decode(self, t):
+		if self.p:		# the last one isn't done: skip this period
+			self.skipped += 1
+			log.info(f'jt9 still busy, skipped the {time.strftime("%H:%M:%S", time.gmtime(t))} period')
+			return
+		i = round((t - self.t0) * self.RATE) - self.base
+		x = self.buf[max(0, i):i + round(self.period * self.RATE)]
+		if i < 0:		# started late: silence before
+			x = np.concatenate((np.zeros(-i, np.float32), x))
+		y = np.convolve(x, self.TAPS, 'same')[::self.RATE // self.OUT]
+		self.stamp = time.strftime('%H:%M:%S', time.gmtime(t)) + (('.5' if t % 1 else '.0') if self.period % 1 else '')		# FT4 periods start on the half second
+		name = str(Path(self.dir) / (time.strftime('%y%m%d_%H%M%S', time.gmtime(t)) + '.wav'))
+		with wave.open(name, 'wb') as w:
+			w.setnchannels(1)
+			w.setsampwidth(2)
+			w.setframerate(self.OUT)
+			w.writeframes((np.clip(y, -1, 1) * 32767).astype('<i2').tobytes())
+		self.wav = name
+		self.p = QProcess()
+		self.p.setWorkingDirectory(self.dir)
+		self.p.finished.connect(self.done)
+		self.p.errorOccurred.connect(lambda e: e == QProcess.ProcessError.FailedToStart and self.gone(f"couldn't run jt9: {self.p.errorString()}"))
+		self.p.start('jt9', [self.FLAG[self.kind], '-d', '3', '-a', self.dir, '-t', self.dir, name])
+		return
+	# decode
+
+	'''-------------------------------------------------------------------
+		jt9's lines -> 'HH:MM:SS  SNR dB  DT s  offset Hz  message' (DT: the signal's time against the clock)
+	-------------------------------------------------------------------'''
+
+	def done(self, code, status):
+		out = bytes(self.p.readAllStandardOutput()).decode(errors='replace').splitlines()
+		err = bytes(self.p.readAllStandardError()).decode(errors='replace').strip()
+		self.p = None
+		Path(self.wav).unlink(missing_ok=True)
+		if err:
+			log.info(f'jt9: {err}')
+		self.got, self.when = 0, self.stamp
+		for line in out:
+			m = self.LINE.match(line)
+			if m:
+				snr, dt, hz, msg = m.groups()
+				self.add(f'{self.stamp}  {int(snr):+3d} dB  {float(dt):+.1f} s  {int(hz):4d} Hz  {msg}\n')
+				self.got += 1
+		return
+	# done
+
+	def info(self):
+		t = f'{self.kind}  jt9: {self.got} at {self.when}' if self.when else f'{self.kind}  jt9: first decode at the end of the next {self.period:g} s period'
+		return t + (f'  ({self.skipped} skipped: jt9 too slow)' if self.skipped else '')
+
+	def tune(self, f):		# jt9 looks at the whole passband
+		return
+
+	def close(self):
+		if self.p:
+			self.p.finished.disconnect(self.done)
+			self.p.kill()
+			self.p.waitForFinished(1000)
+			self.p = None
+		shutil.rmtree(self.dir, ignore_errors=True)
+		return
+	# close
+
+# class Wsjt
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
 class Scope:		# Spectrum button with no decoder running: the strip alone. Same face as decode.Rtty / Cw
 	def __init__(self):
 		self.tu = decode.Tuner(None, 99, 0, 4)		# a 99 dB squelch never picks a signal: no marker, no squelch line
@@ -929,7 +1055,8 @@ class Scope:		# Spectrum button with no decoder running: the strip alone. Same f
 ==================================================================================================================================================='''
 
 class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwolf) and JS8 (JS8Call), on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
-	KINDS = ['Off', 'RTTY', 'CW', 'VARA', 'Packet', 'JS8']
+	KINDS = ['Off', 'RTTY', 'CW', 'VARA', 'Packet', 'JS8', 'FT4', 'FT8']
+	WSJT = ('FT4', 'FT8')		# by jt9 (WSJT-X)
 	SINK, JS8PORT = 'shack_js8', 2242		# JS8: null sink JS8Call's input listens to (its monitor); JS8Call's UDP API port
 	PACKET = {300: (1550, 1850), 1200: (1150, 2250)}		# baud: audio band, mark and space tones inside it
 	NAGS = ('ERROR!!!  Unknown APRS Data Type', 'Use of "ID" in the destination', 'Tell the sender')		# direwolf on packets that aren't APRS (BBS and node IDs)
@@ -958,7 +1085,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		self.lines = {}		# JS8: offset Hz: (cursor at the start of that message's line, when its last frame came, the line's start); a message's frames join one line
 		self.logging, self.logged = False, None		# Log button; logged: the decoder the file's last header was for
 		self.load()
-		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, VARA, packet or JS8 (through JS8Call). Right-click for settings')
+		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, VARA, packet, JS8 (through JS8Call), FT4 or FT8 (jt9). Right-click for settings')
 		self.pick.addItems(self.KINDS)
 		self.pick.activated.connect(lambda i: self.start(self.pick.itemText(i)))
 		self.sql = QSpinBox(minimum=0, maximum=30, suffix=' dB', keyboardTracking=False, enabled=False, toolTip='Squelch: decodes when the signal is this far above the noise, stops 3 dB lower')
@@ -1005,6 +1132,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		if not decode:
 			quiet(self.pick, self.pick.setCurrentIndex, 0)
 			return self.status.setText(f"can't decode: {NODECODE}")
+		if kind in self.WSJT and not shutil.which('jt9'):
+			quiet(self.pick, self.pick.setCurrentIndex, 0)
+			return self.status.setText("can't find jt9 (it comes with WSJT-X: apt install wsjtx)")
 		if kind in Helper.PROGRAMS and not Helper.find(kind):
 			quiet(self.pick, self.pick.setCurrentIndex, 0)
 			name, alt = Helper.PROGRAMS[kind]
@@ -1020,7 +1150,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 				return self.status.setText(why)
 		self.kind, self.heard = kind, time.monotonic()
 		self.make()
-		self.sql.setEnabled(kind not in Helper.PROGRAMS and kind != 'Scope')		# the programs have no squelch here
+		self.sql.setEnabled(kind not in Helper.PROGRAMS and kind not in self.WSJT and kind != 'Scope')		# the programs have no squelch here
 		self.digi()
 		self.timer.start()
 		if kind != 'Scope':
@@ -1098,6 +1228,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		if self.kind == 'Scope':
 			self.dec = Scope()
 			return
+		if self.kind in self.WSJT:
+			self.dec = Wsjt(self.kind, self.add, self.died)
+			return self.newline()
 		if self.kind in Helper.PROGRAMS:
 			if self.kind == 'VARA':
 				h = Helper('VARA', ['--stdin', '48000', '--hf', str(self.hf), '--calls', str(self.calls())], (1500 - self.hf / 2, 1500 + self.hf / 2), self.add, self.died)		# VARA sits at 1500 Hz
@@ -1133,7 +1266,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			self.rec.kill()
 			self.rec.waitForFinished(1000)
 			self.rec = None
-		if isinstance(self.dec, Helper):
+		if isinstance(self.dec, (Helper, Wsjt)):
 			self.dec.close()
 		if self.sk:
 			self.sk.close()
@@ -1217,6 +1350,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			t = f'{self.hf} Hz   xara-monitor listening'
 		elif self.kind == 'Packet':
 			t = f'{self.pk} baud   direwolf listening'
+		elif self.kind in self.WSJT:
+			t = self.dec.info()
 		elif self.kind == 'JS8':
 			ok = self.js8 and time.monotonic() - self.js8[0] < 40		# it pings every 15 s
 			t = f'JS8Call {self.js8[1]} connected' if ok else f'waiting for JS8Call: running? Settings > Reporting > UDP Server API on, port {self.JS8PORT}? Input: Monitor of shack-JS8'
