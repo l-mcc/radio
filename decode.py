@@ -79,8 +79,9 @@ class Mixer:	# shifts f down to DC, phase continuous
 
 class Tuner:	# averaged spectrum, finds the strongest tone pair (RTTY) or tone (CW, shift 0)
 	N = 16384
-	def __init__(s, center, sq, shift, jump):
+	def __init__(s, center, sq, shift, jump, narrow=None):	# narrow (Hz): only signals quiet that far outside the pair count (PSK31: wide signals like VARA don't)
 		s.fixed = center is not None
+		s.nb = round(narrow / (FS / s.N)) if narrow else 0
 		s.center = center or 0.0
 		s.sq, s.snr, s.jump = sq, 0.0, jump
 		s.buf, s.new, s.avg, s.sc = np.zeros(0), 0, None, None
@@ -102,6 +103,9 @@ class Tuner:	# averaged spectrum, finds the strongest tone pair (RTTY) or tone (
 		sc = s.sc = np.minimum(s.avg[s.lo:s.hi], s.avg[s.lo + s.sh:s.hi + s.sh])	# weaker tone of the pair
 		s.nf = np.median(s.avg[s.lo:s.hi + s.sh])
 		srch = sc if s.look is None else np.where((s.fk >= s.look[0]) & (s.fk <= s.look[1]), sc, 0.0)
+		if s.nb:	# the pair at least 6 dB above both sides
+			side = np.maximum(s.avg[s.lo - s.nb:s.hi - s.nb], s.avg[s.lo + s.sh + s.nb:s.hi + s.sh + s.nb])
+			srch = np.where(sc > 4 * side, srch, 0.0)
 		k = int(np.argmax(srch))
 		kc = round(s.center / s.df - s.sh / 2) - s.lo
 		cur = sc[kc] if 0 <= kc < len(sc) else 0.0
@@ -311,7 +315,7 @@ class Cw:	# decoder(x) -> (text, new station)
 class Psk:	# BPSK31: decoder(x) -> (text, new station)
 	SPS = round(PSR / PSK)
 	def __init__(s, center, sq):
-		s.tu = Tuner(center, sq, PSK, 4)	# idle (reversals) is two lines 31.25 Hz apart: the pair's middle is the carrier
+		s.tu = Tuner(center, sq, PSK, 4, 60)	# idle (reversals) is two lines 31.25 Hz apart: the pair's middle is the carrier; quiet 60 Hz beyond them
 		s.f = s.tu.center	# where the demodulator listens: the tuner's guess, refined by the AFC
 		s.mix = Mixer(s.f, FS)
 		s.lp1 = Fir(lowpass(300, FS, 331), 12)	# to 4000 S/s
