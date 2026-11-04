@@ -3,7 +3,8 @@
 #	decode.py	curses UI: pick decoder and settings, click the spectrum to tune
 #	decode.py rtty [-b BAUD] [-w SHIFT] [-c HZ] [-r] [-s DB]	RTTY, text to stdout, status to stderr
 #	decode.py cw [-c HZ] [-s DB]	CW, strongest signal unless -c
-#	decode.py send [-b BAUD] [-w SHIFT] [--cw WPM] [-c HZ] [-r] [-n SNR] [-l] [text]	test sender
+#	decode.py psk [-c HZ] [-s DB]	PSK31 (BPSK), strongest signal unless -c
+#	decode.py send [-b BAUD] [-w SHIFT] [--cw WPM | --psk] [-c HZ] [-r] [-n SNR] [-l] [text]	test sender
 #	decode.py rec [SECONDS]	record Digital out to rec.wav (default 60 s)
 #	decoded text also goes to cw.txt / rtty.txt in the current folder, overwritten each run
 #	the UI keeps its settings in decode.json next to this file
@@ -34,6 +35,19 @@ MORSE = {'.-': 'A', '-...': 'B', '-.-.': 'C', '-..': 'D', '.': 'E', '..-.': 'F',
 	'---..': '8', '----.': '9', '.-.-.-': '.', '--..--': ',', '..--..': '?', '-..-.': '/', '-....-': '-',
 	'---...': ':', '.----.': "'", '-.--.-': ')', '.-..-.': '"', '.--.-.': '@', '.-...': '&',
 	'-...-': '=', '.-.-.': '+', '-.--.': '<KN>', '...-.-': '<SK>'}	# = BT, + AR
+
+# PSK31 Varicode (G3PLX), index = ASCII; characters are separated by 00, which no code contains
+VARICODE = ('1010101011 1011011011 1011101101 1101110111 1011101011 1101011111 1011101111 1011111101 1011111111 11101111 11101 1101101111 1011011101 11111 1101110101 1110101011 '
+	'1011110111 1011110101 1110101101 1110101111 1101011011 1101101011 1101101101 1101010111 1101111011 1101111101 1110110111 1101010101 1101011101 1110111011 1011111011 1101111111 '
+	'1 111111111 101011111 111110101 111011011 1011010101 1010111011 101111111 11111011 11110111 101101111 111011111 1110101 110101 1010111 110101111 '
+	'10110111 10111101 11101101 11111111 101110111 101011011 101101011 110101101 110101011 110110111 11110101 110111101 111101101 1010101 111010111 1010101111 '
+	'1010111101 1111101 11101011 10101101 10110101 1110111 11011011 11111101 101010101 1111111 111111101 101111101 11010111 10111011 11011101 10101011 '
+	'11010101 111011101 10101111 1101111 1101101 101010111 110110101 101011101 101110101 101111011 1010101101 111110111 111101111 111111011 1010111111 101101101 '
+	'1011011111 1011 1011111 101111 101101 11 111101 1011011 101011 1101 111101011 10111111 11011 111011 1111 111 '
+	'111111 110111111 10101 10111 101 110111 1111011 1101011 11011111 1011101 111010101 1010110111 110111011 1010110101 1011010111 1110110101').split()
+UNVARI = {int(c, 2): chr(i) for i, c in enumerate(VARICODE)}
+PSK = 31.25	# baud
+PSR = 1000	# PSK31 works at 1000 S/s: 32 samples a symbol
 
 def lowpass(fc, fs, n):
 	t = np.arange(n) - (n - 1) / 2
@@ -94,7 +108,7 @@ class Tuner:	# averaged spectrum, finds the strongest tone pair (RTTY) or tone (
 		s.snr = s.db(cur)
 		return True
 	def db(s, v):
-		return 10 * np.log10(v / s.nf + 1e-12)
+		return 10 * np.log10(v / (s.nf + 1e-30) + 1e-12)	# nf 0: a test signal with no noise at all
 	def snap(s, f, w):	# strongest tone (pair) within w Hz of f, if there is one
 		if s.sc is None:
 			return f
@@ -287,6 +301,64 @@ class Cw:	# decoder(x) -> (text, new station)
 		if abs(s.ky.wpm() / s.fw - 1) > 0.15:	# follow the speed
 			s.fw = s.ky.wpm()
 			s.lp2.t = lowpass(cwcut(s.fw), FS2, 115)
+		return (txt if s.op else ''), new
+
+class Psk:	# BPSK31: decoder(x) -> (text, new station)
+	SPS = round(PSR / PSK)
+	def __init__(s, center, sq):
+		s.tu = Tuner(center, sq, PSK, 4)	# idle (reversals) is two lines 31.25 Hz apart: the pair's middle is the carrier
+		s.f = s.tu.center	# where the demodulator listens: the tuner's guess, refined by the AFC
+		s.mix = Mixer(s.f, FS)
+		s.lp1 = Fir(lowpass(300, FS, 331), 12)	# to 4000 S/s
+		s.lp2 = Fir(lowpass(60, 4000, 255), 4)	# to 1000 S/s
+		s.lp3 = Fir(lowpass(20, PSR, 129))	# about the signal's own width
+		s.en = np.zeros(s.SPS)	# envelope at each of the 32 sample times in a symbol: the loudest is the middle of the symbol
+		s.n, s.best, s.prev, s.code, s.q = 0, 0, 0j, 0, 0.0	# best: the sample time in the symbol to decide on, picked once a symbol
+		s.op, s.said = False, None
+	def tune(s, f):	# None = auto
+		s.tu.fixed = f is not None
+		if f is not None:
+			s.tu.center = s.f = f
+			s.mix.set(f)
+	def info(s):
+		return f'quality {s.q:.2f}'
+	def symbol(s, z):	# one symbol: phase kept = 1, reversed = 0; Varicode on the bits
+		d = z * np.conj(s.prev)
+		s.prev = z
+		a = abs(d)
+		if a == 0:
+			return ''
+		s.q += 0.05 * (abs(d.real) / a - s.q)	# near 1 on clean PSK, 0.64 on noise
+		if s.op:	# AFC: d squared loses the reversals, what's left is the drift per symbol
+			s.f += float(np.angle(d * d)) / 2 / (2 * np.pi / PSK) * 0.1
+			s.f = min(max(s.f, s.tu.center - 15), s.tu.center + 15)
+			s.mix.set(s.f)
+		s.code = (s.code << 1) | int(d.real > 0)
+		if s.code & 3 == 0:	# 00: end of a character
+			c, s.code = UNVARI.get(s.code >> 2, ''), 0
+			return c if c == '\n' or c.isprintable() else ''
+		if s.code >= 1 << 12:	# longer than any code: noise
+			s.code = 0
+		return ''
+	def __call__(s, x):
+		new = False
+		if s.tu(x):
+			if abs(s.tu.center - s.f) > 15:	# the tuner moved on (new station, or a click): start over there
+				s.f = s.tu.center
+				s.mix.set(s.f)
+			s.op = s.tu.snr > s.tu.sq - 3 and s.q > 0.75 if s.op else s.tu.snr > s.tu.sq and s.q > 0.8
+			if s.op and (s.said is None or abs(s.tu.center - s.said) > 20):
+				s.said, new = s.tu.center, True
+		out = []
+		for z in s.lp3(s.lp2(s.lp1(s.mix(x)))):
+			k = s.n % s.SPS
+			s.en[k] += 0.02 * (abs(z) - s.en[k])
+			if k == 0:
+				s.best = int(np.argmax(s.en))
+			if k == s.best:
+				out.append(s.symbol(z))
+			s.n += 1
+		txt = ''.join(out)
 		return (txt if s.op else ''), new
 
 def listen(port):
@@ -568,6 +640,22 @@ def keyed(a):	# CW: dot 1.2/wpm s, 5 ms raised cosine edges
 	k = np.convolve(k, np.hanning(2 * r) / r, 'same')
 	return noisy(0.3 * k * np.sin(2 * np.pi * a.center * np.arange(len(k)) / FS), a.snr)
 
+def psk(a):	# BPSK31: reversals to start, the text, then carrier; a reversal swings the amplitude through zero (cosine)
+	bits = [0] * 32
+	for c in a.text.replace('\r', ''):
+		if ord(c) < 128:
+			bits += [int(b) for b in VARICODE[ord(c)]] + [0, 0]
+	bits += [1] * 32
+	n = round(FS / PSK)
+	t = np.arange(n) / n
+	env, p = [], 1.0
+	for b in bits:
+		env.append(p * np.cos(np.pi * t) if b == 0 else np.full(n, p))
+		if b == 0:
+			p = -p
+	e = np.concatenate(env)
+	return noisy(0.3 * e * np.sin(2 * np.pi * a.center * np.arange(len(e)) / FS), a.snr)
+
 def noisy(y, snr):	# snr in 3 kHz, against a 0.3 peak tone
 	if snr is not None:
 		y = y + np.random.normal(0, np.sqrt(0.045 / 10 ** (snr / 10) * (FS / 2) / 3000), len(y))
@@ -577,7 +665,7 @@ def send(a):
 	sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	t0, n = time.monotonic(), 0
 	while True:
-		y = keyed(a) if a.cw else afsk(a)
+		y = keyed(a) if a.cw else psk(a) if a.psk else afsk(a)
 		for i in range(0, len(y) - 479, 480):
 			sk.sendto(y[i:i + 480].tobytes(), ('127.0.0.1', a.port))
 			n += 1
@@ -600,7 +688,7 @@ def rec(port, secs):	# raw Digital out to rec.wav, for testing decoders on real 
 	print('done', file=sys.stderr)
 
 def main():
-	cmd = sys.argv[1] if sys.argv[1:2] and sys.argv[1] in ('rtty', 'cw', 'send', 'rec') else 'ui'
+	cmd = sys.argv[1] if sys.argv[1:2] and sys.argv[1] in ('rtty', 'cw', 'psk', 'send', 'rec') else 'ui'
 	argv = sys.argv[2:] if cmd in sys.argv[1:2] else sys.argv[1:]
 	p = argparse.ArgumentParser(prog='decode.py' + ('' if cmd == 'ui' else ' ' + cmd))
 	p.add_argument('-p', '--port', type=int, default=7355)
@@ -618,23 +706,25 @@ def main():
 		curses.wrapper(ui, listen(a.port), a.port)
 	elif cmd == 'send':
 		p.add_argument('--cw', type=float, metavar='WPM', help='send CW instead of RTTY')
-		p.add_argument('-c', '--center', type=float, help='center Hz (default 2210, CW 700)')
+		p.add_argument('--psk', action='store_true', help='send PSK31 instead of RTTY')
+		p.add_argument('-c', '--center', type=float, help='center Hz (default 2210, CW 700, PSK31 1000)')
 		p.add_argument('-n', '--snr', type=float, help='add noise, dB in 3 kHz')
 		p.add_argument('-l', '--loop', action='store_true')
 		p.add_argument('text', nargs='?')
 		a = p.parse_args(argv)
-		a.center = a.center or (700 if a.cw else 2210)
+		a.center = a.center or (700 if a.cw else 1000 if a.psk else 2210)
 		a.text = a.text or ('CQ CQ CQ DE N0CALL N0CALL K\nUR RST 599 5NN = NAME LARRY QTH ASHEVILLE NC + 73 TU\n' if a.cw else
+			'cq cq cq de n0call n0call pse k\nName is Larry, QTH Asheville NC. Rig: FTdx10, 24 W to an EFHW. 73!\n' if a.psk else
 			'RYRYRY CQ CQ CQ DE TEST TEST K\nTHE QUICK BROWN FOX 0123456789 -?:(),./\n')
 		setmode(a.baud, a.shift)
 		send(a)
 	else:
 		p.add_argument('-c', '--center', type=float, help='Hz (default: auto)')
-		sq = 10 if cmd == 'cw' else 6
+		sq = 10 if cmd == 'cw' else 2 if cmd == 'psk' else 6	# PSK31: the quality gate does most of the work
 		p.add_argument('-s', '--squelch', type=float, default=sq, help=f'dB, default {sq} (closes 3 dB lower)')
 		a = p.parse_args(argv)
 		a.kind = cmd.upper()
-		plain(Cw(a.center, a.squelch) if cmd == 'cw' else Rtty(a.baud, a.shift, a.rev, a.center, a.squelch), a)
+		plain(Cw(a.center, a.squelch) if cmd == 'cw' else Psk(a.center, a.squelch) if cmd == 'psk' else Rtty(a.baud, a.shift, a.rev, a.center, a.squelch), a)
 
 if __name__ == '__main__':
 	try:
