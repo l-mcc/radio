@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, logging, shutil, socket, sqlite3, subprocess, sys, tempfile, time
+import argparse, json, logging, shutil, socket, sqlite3, struct, subprocess, sys, tempfile, time
 from pathlib import Path
 
 import serial
 from PyQt6.QtCore import pyqtSignal, QEvent, QPointF, QProcess, QRect, QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
 
@@ -60,6 +60,7 @@ HELP = '''
 
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
+<p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. The decoder area's colors are in styles.py (decoder).</p>
@@ -663,6 +664,123 @@ class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: 
 	# wheelEvent
 
 # class Spectrum
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
+class Waterfall(QWidget):		# a CI-V radio's own band scope (27 00 data): spectrum on top, waterfall under it, the dial marked; click tunes there
+	ROWS = 200		# sweeps of history (about 50 s at the 705's 4 a second)
+	SPEC = 70		# px of spectrum above the waterfall
+	TOP = 160		# the 705's scope level at full scale (0xA0)
+	STOPS = ((0, '#000000'), (30, '#000050'), (60, '#0000ff'), (85, '#00e0ff'), (110, '#ffff00'), (135, '#ff0000'), (160, '#ffffff'))		# level: color
+
+	'''-------------------------------------------------------------------
+		tune(mhz): what a click does
+	-------------------------------------------------------------------'''
+
+	def __init__(self, tune):
+		super().__init__()
+		self.tune = tune
+		self.setFixedHeight(self.SPEC + self.ROWS + 14)		# bottom 14 px: kHz labels
+		self.setCursor(Qt.CursorShape.CrossCursor)
+		self.setToolTip('The radio\'s band scope. Click: tune there.  Red line: the dial')
+		self.lo, self.hi, self.dial = 0, 0, 0		# Hz across the width, Hz of the dial
+		self.n = 0		# points per sweep
+		self.rows = bytearray()		# newest sweep first, ROWS * n levels
+		self.colors = self.table()
+		return
+	# __init__
+
+	'''-------------------------------------------------------------------
+		256 colors for Indexed8: STOPS blended, white above the top
+	-------------------------------------------------------------------'''
+
+	def table(self):
+		out = []
+		for v in range(256):
+			(a, ca), (b, cb) = next(((s, t) for s, t in zip(self.STOPS, self.STOPS[1:]) if v <= t[0]), (self.STOPS[-1], self.STOPS[-1]))
+			f = (v - a) / (b - a) if b > a else 1
+			ca, cb = QColor(ca), QColor(cb)
+			out.append(QColor(round(ca.red() + f * (cb.red() - ca.red())), round(ca.green() + f * (cb.green() - ca.green())), round(ca.blue() + f * (cb.blue() - ca.blue()))).rgb())
+		return out
+	# table
+
+	'''-------------------------------------------------------------------
+		one sweep from civ.Rig: <II lo hi Hz, then a level byte per point; a new width (span, points) starts the waterfall over
+	-------------------------------------------------------------------'''
+
+	def add(self, v):
+		lo, hi = struct.unpack('<II', v[:8])
+		d = v[8:]
+		if len(d) < 2:
+			return
+		if len(d) != self.n or hi - lo != self.hi - self.lo:
+			self.n, self.rows = len(d), bytearray(len(d) * self.ROWS)
+		self.lo, self.hi = lo, hi
+		self.rows[len(d):] = self.rows[:-len(d)]
+		self.rows[:len(d)] = d
+		self.update()
+		return
+	# add
+
+	def clear(self):
+		self.n, self.rows = 0, bytearray()
+		self.update()
+
+	def px(self, hz):
+		return round((hz - self.lo) / (self.hi - self.lo) * self.width())
+
+	'''-------------------------------------------------------------------
+		spectrum (newest sweep), grid and kHz labels, waterfall, dial line
+	-------------------------------------------------------------------'''
+
+	def paintEvent(self, e):
+		p = QPainter(self)
+		w, s, h = self.width(), self.SPEC, self.SPEC + self.ROWS
+		p.fillRect(self.rect(), QColor(styles.decoder['spectrum']))
+		if not self.n or self.hi <= self.lo:
+			p.setPen(QColor(styles.decoder['labels']))
+			p.drawText(QRect(0, 0, w, h), Qt.AlignmentFlag.AlignCenter, 'waiting for the radio\'s scope…')
+			return
+		raw = bytes(self.rows)		# QImage doesn't copy: keep it alive while drawing
+		img = QImage(raw, self.n, self.ROWS, self.n, QImage.Format.Format_Indexed8)
+		img.setColorTable(self.colors)
+		p.drawImage(QRect(0, s, w, self.ROWS), img)
+		span = self.hi - self.lo
+		step = next((x for x in (500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000) if span / x <= 10), 500000)
+		p.setFont(QFont('DejaVu Sans', 7))
+		for f in range((self.lo // step + 1) * step, self.hi, step):
+			x = self.px(f)
+			p.setPen(QColor(styles.decoder['grid']))
+			p.drawLine(x, 0, x, s)
+			p.setPen(QColor(styles.decoder['labels']))
+			if 30 <= x <= w - 30:		# no half labels at the edges
+				p.drawText(QRect(x - 30, h, 60, 14), Qt.AlignmentFlag.AlignCenter, f'{f / 1e6:.4f}'.rstrip('0').rstrip('.') if step < 10000 else f'{f / 1e6:.3f}')
+		pts = [QPointF(0, s)] + [QPointF(i * w / (self.n - 1), s - min(c, self.TOP) / self.TOP * s) for i, c in enumerate(self.rows[:self.n])] + [QPointF(w, s)]
+		p.setPen(Qt.PenStyle.NoPen)
+		p.setBrush(QColor(styles.decoder['fill']))
+		p.drawPolygon(QPolygonF(pts))
+		if self.lo <= self.dial <= self.hi:
+			p.setPen(QPen(QColor(255, 60, 60, 200), 1))
+			p.drawLine(self.px(self.dial), 0, self.px(self.dial), h)
+		return
+	# paintEvent
+
+	'''-------------------------------------------------------------------
+		click: tune there, to 10 Hz on narrow spans, 100 Hz on wide ones
+	-------------------------------------------------------------------'''
+
+	def mousePressEvent(self, e):
+		if self.n and e.button() == Qt.MouseButton.LeftButton:
+			hz = self.lo + e.position().x() / self.width() * (self.hi - self.lo)
+			snap = 10 if self.hi - self.lo <= 20000 else 100
+			self.tune(round(hz / snap) * snap / 1e6)
+		return
+	# mousePressEvent
+
+# class Waterfall
 
 
 '''===================================================================================================================================================
@@ -1440,16 +1558,34 @@ class Shack(QMainWindow):
 		h.addStretch()
 		self.clients = QLabel()
 		self.statusBar().addPermanentWidget(self.clients)
+		self.wf = Waterfall(lambda mhz: self.rig and self.rig.set('mhz', mhz))		# CI-V band scope, shown while wfb is on
+		self.scoperow = QWidget()		# Waterfall button, span, ref level
+		self.wfb = QPushButton('Waterfall', checkable=True, toolTip='The radio\'s band scope, sent over CI-V')
+		self.wfb.clicked.connect(self.set_wf)
+		self.span = QComboBox(toolTip='Scope width: this much either side of the dial')
+		self.span.addItems([f'± {x / 1000:g} kHz' for x in civ.SPANS])
+		self.span.activated.connect(lambda i: self.rig and self.rig.set('span', civ.SPANS[i]))
+		self.ref = QDoubleSpinBox(minimum=-20, maximum=20, singleStep=0.5, decimals=1, suffix=' dB', keyboardTracking=False, toolTip='Scope reference level: lower shows weak signals brighter')
+		self.ref.valueChanged.connect(lambda v: self.rig and self.rig.set('ref', v))
+		h = QHBoxLayout(self.scoperow)
+		h.setContentsMargins(0, 0, 0, 0)
+		h.addWidget(self.wfb)
+		h.addWidget(self.span)
+		h.addWidget(QLabel('Ref'))
+		h.addWidget(self.ref)
+		h.addStretch()
 
 		self.labels = {}		# control: its row label
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc),
-				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow)]):
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow), ('Scope', self.scoperow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
 			g.addWidget(self.labels[w], row, 0)
-			g.addWidget(w, row, 1, 1, 2 if w in (self.freq, self.vforow, self.filrow, self.ovl, self.adc, self.smeter, self.power, self.pttrow) else 1)
+			g.addWidget(w, row, 1, 1, 2 if w in (self.freq, self.vforow, self.filrow, self.ovl, self.adc, self.smeter, self.power, self.pttrow, self.scoperow) else 1)
+		row += 1
+		g.addWidget(self.wf, row, 0, 1, 3)
 		row += 1
 		g.addLayout(switches, row, 0, 1, 3)
 		self.helpw = None
@@ -1480,7 +1616,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.smeter, self.swr, self.power, self.pttrow, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.smeter, self.swr, self.power, self.pttrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -1527,7 +1663,7 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.save, self.bms,
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, *([self.scoperow] if r['scope'] else []), self.save, self.bms,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))		# nb, nr: the radio's own, on/off
 		self.dec.opened(r['audio'])		# decoders read the radio's USB sound card
 		self.levels()
@@ -1588,6 +1724,8 @@ class Shack(QMainWindow):
 				self.bm.set_last('RSPdx', round(self.rig.state['mhz'] * 1e6), self.rig.state['mode'].upper(), self.rig.settings())
 			if isinstance(self.rig, civ.Rig) and (self.rig.tx or self.pttb.isChecked()):		# the button may be ahead of the radio's report
 				self.rig.ptt(False)
+			if isinstance(self.rig, civ.Rig) and self.wfb.isChecked():
+				self.rig.send(0x27, 0x11, 0x00)		# scope data off
 			self.rig.close()
 			self.rig = None
 		if self.srv:
@@ -1606,8 +1744,9 @@ class Shack(QMainWindow):
 		self.swr.setStyleSheet('')
 		self.filw.setText('')
 		quiet(self.fil, self.fil.setCurrentIndex, -1)
-		for b in (*self.sw.values(), *self.vfo.values()):
+		for b in (*self.sw.values(), *self.vfo.values(), self.wfb):
 			b.setChecked(False)
+		self.wf.clear()
 		self.on_rig('ptt', 0)
 		self.only(())
 		return
@@ -1694,6 +1833,25 @@ class Shack(QMainWindow):
 	# tx_band
 
 	'''-------------------------------------------------------------------
+		Waterfall button: the radio's scope on, centered on the dial, its data over CI-V; off stops the data
+	-------------------------------------------------------------------'''
+
+	def set_wf(self, on):
+		if not isinstance(self.rig, civ.Rig):
+			return
+		if on:
+			self.rig.send(0x27, 0x10, 0x01)		# scope on
+			self.rig.send(0x27, 0x14, 0x00, 0x00)		# center mode: the span picks the width
+			self.rig.send(0x27, 0x11, 0x01)		# its data out on CI-V
+			self.rig.send(0x27, 0x19, 0x00)		# ref level
+		else:
+			self.rig.send(0x27, 0x11, 0x00)
+			self.wf.clear()
+		self.wf.setVisible(on)
+		return
+	# set_wf
+
+	'''-------------------------------------------------------------------
 		an NB or NR level is usable only while its switch is on (and usable)
 	-------------------------------------------------------------------'''
 
@@ -1734,6 +1892,7 @@ class Shack(QMainWindow):
 			return
 		if k == 'mhz':		# Freq keeps what's being typed, and ignores reports for a second after a step
 			self.freq.set_mhz(v)
+			self.wf.dial = round(v * 1e6)
 			if isinstance(self.rig, Rspdx):
 				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rspdx's call, not a command
 			else:
@@ -1815,6 +1974,12 @@ class Shack(QMainWindow):
 			self.oops(v)
 		elif k == 'error':
 			self.statusBar().showMessage(v, 5000)
+		elif k == 'scope' and self.wfb.isChecked():
+			self.wf.add(v)
+		elif k == 'span' and v in civ.SPANS and self.span.currentIndex() != civ.SPANS.index(v):
+			quiet(self.span, self.span.setCurrentIndex, civ.SPANS.index(v))
+		elif k == 'ref' and isinstance(self.rig, civ.Rig):
+			quiet(self.ref, self.ref.setValue, v)
 		return
 	# on_rig
 
