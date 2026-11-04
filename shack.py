@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import argparse, json, logging, shutil, socket, sqlite3, struct, subprocess, sys, tempfile, time
+import argparse, json, logging, re, shutil, socket, sqlite3, struct, subprocess, sys, tempfile, time
 from pathlib import Path
 
 import serial
@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder</h3>
-<p>Pick RTTY, CW, VARA, Packet or JS8. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; Off and closing shack leave it running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, VARA, Packet or JS8. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; Off and closing shack leave it running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -818,6 +818,7 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 		self.op, self.last = False, ''		# last: its last stderr line
 		self.hush = kind == 'Packet'		# direwolf talks a lot before its first packet (VOX advice...): shack.log until then
 		self.drop = ()		# line starts not to show at all
+		self.seen = None		# seen(line): every decoded line, before it's shown (VARA: callsigns for calls.txt)
 		self.gain = 1.0		# on the audio it gets
 		self.p = QProcess()
 		self.p.readyReadStandardOutput.connect(self.out)
@@ -864,6 +865,8 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 			if self.hush or line.startswith(self.CHATTER) or not line.strip():
 				log.info(f'{self.name}: {line}') if line.strip() else None
 			else:
+				if self.seen:
+					self.seen(line)
 				self.add(line + '\n')
 		return
 	# out
@@ -927,6 +930,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 	SINK, JS8PORT = 'shack_js8', 2242		# JS8: null sink JS8Call's input listens to (its monitor); JS8Call's UDP API port
 	PACKET = {300: (1550, 1850), 1200: (1150, 2250)}		# baud: audio band, mark and space tones inside it
 	NAGS = ('ERROR!!!  Unknown APRS Data Type', 'Use of "ID" in the destination', 'Tell the sender')		# direwolf on packets that aren't APRS (BBS and node IDs)
+	CALLS = HERE / 'calls.txt'		# callsigns xara-monitor shows by name instead of #hash (--calls); shack adds the ones it hears, you can add your own
+	NAMED = re.compile(r'CQFRAME (\S+)|HEADER (\S+) → (\S+):|link (\S+) → (\S+) ended')		# xara-monitor lines that carry callsigns
+	CALL = re.compile(r'(?=.*\d)(?=.*[A-Z])[A-Z0-9]{3,7}(-\d{1,2})?')		# a callsign, not a #hash
 
 	'''-------------------------------------------------------------------
 		digi(): turns the radio's Digital out on
@@ -1053,6 +1059,28 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		return
 
 	'''-------------------------------------------------------------------
+		calls.txt: made the first time with a comment saying what it is; read again at each xara-monitor start, so hand edits count
+	-------------------------------------------------------------------'''
+
+	def calls(self):
+		if not self.CALLS.exists():
+			self.CALLS.write_text('# callsigns xara-monitor shows by name instead of #hash; one per line, # starts a comment.\n# shack adds the ones it hears (CQ, header, link lines); add yours and the stations you work.\n')
+		self.known = {l.split('#')[0].split(',')[0].strip().upper() for l in self.CALLS.read_text().splitlines()} - {''}
+		return self.CALLS
+	# calls
+
+	def named(self, line):		# a callsign xara-monitor decoded and calls.txt doesn't have yet: add it
+		m = self.NAMED.search(line)
+		for c in (m.groups() if m else ()):
+			if c and self.CALL.fullmatch(c) and c not in self.known:
+				self.known.add(c)
+				with open(self.CALLS, 'a') as f:
+					f.write(c + '\n')
+				log.info(f'calls.txt: added {c}')
+		return
+	# heard
+
+	'''-------------------------------------------------------------------
 		a new decoder with the current settings
 	-------------------------------------------------------------------'''
 
@@ -1062,7 +1090,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			return
 		if self.kind in Helper.PROGRAMS:
 			if self.kind == 'VARA':
-				h = Helper('VARA', ['--stdin', '48000', '--hf', str(self.hf)], (1500 - self.hf / 2, 1500 + self.hf / 2), self.add, self.died)		# VARA sits at 1500 Hz
+				h = Helper('VARA', ['--stdin', '48000', '--hf', str(self.hf), '--calls', str(self.calls())], (1500 - self.hf / 2, 1500 + self.hf / 2), self.add, self.died)		# VARA sits at 1500 Hz
+				h.seen = self.named
 			elif self.kind == 'JS8':
 				h = Helper('JS8', ['--playback', '--raw', '--format=s16le', '--rate=48000', '--channels=1', f'--device={self.SINK}', '--latency-msec=200'], (500, 2500), self.add, self.died)		# JS8 signals sit in 500-2500 Hz
 			else:
