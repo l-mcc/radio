@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder</h3>
-<p>Pick RTTY, CW, VARA, Packet, JS8, FT4, FT8 or WSPR. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... WSPR (by wsprd, also WSJT-X's): beacons, every even minute, 2-minute transmissions within 200 Hz of 1500 Hz audio; each line is a station heard: time, SNR, DT, offset, drift (Hz/min), callsign, grid and the power it says it sends (dBm and watts). A good way to see where a band is open. Dials (USB): 3.5686, 7.0386, 10.1387, 14.0956, 18.1046, 21.0946, 28.1246 MHz. Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, VARA, Packet, JS8, FT4, FT8 or WSPR. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY) or for CW the speed. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... WSPR (by wsprd, also WSJT-X's): beacons, every even minute, 2-minute transmissions within 200 Hz of 1500 Hz audio; each line is a station heard: time, SNR, DT, offset, drift (Hz/min), callsign, grid and the power it says it sends (dBm and watts). FT4, FT8 and WSPR lines with a grid end with its distance (miles) and bearing from your grid: right-click > My grid (EM85RP to start). A good way to see where a band is open. Dials (USB): 3.5686, 7.0386, 10.1387, 14.0956, 18.1046, 21.0946, 28.1246 MHz. Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -76,6 +76,29 @@ HELP = '''
 
 def sunits(db):		# S9-relative dB -> S7 / S9+20
 	return f'S{max(0, (db + 54) // 6)}' if db <= 0 else f'S9+{db}'
+
+'''-------------------------------------------------------------------
+	Maidenhead grid (EM85 or EM85rp) -> (lat, lon) of its middle, None if it isn't one; distance (miles) and bearing between two
+-------------------------------------------------------------------'''
+
+GRID = re.compile(r'\b([A-R]{2}[0-9]{2}(?:[A-Xa-x]{2})?)\b')
+
+def grid_ll(g):
+	g = g.strip()
+	if not re.fullmatch(r'[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?', g):
+		return None
+	g = g.upper()
+	lon = (ord(g[0]) - 65) * 20 - 180 + int(g[2]) * 2
+	lat = (ord(g[1]) - 65) * 10 - 90 + int(g[3])
+	if len(g) == 6:
+		return lat + (ord(g[5]) - 65 + 0.5) / 24, lon + (ord(g[4]) - 65 + 0.5) / 12
+	return lat + 0.5, lon + 1
+
+def path(a, b):		# great circle: miles, initial bearing (degrees from north)
+	(la1, lo1), (la2, lo2) = (map(np.radians, p) for p in (a, b))
+	d = 2 * np.arcsin(np.sqrt(np.sin((la2 - la1) / 2) ** 2 + np.cos(la1) * np.cos(la2) * np.sin((lo2 - lo1) / 2) ** 2))
+	brg = np.degrees(np.arctan2(np.sin(lo2 - lo1) * np.cos(la2), np.cos(la1) * np.sin(la2) - np.sin(la1) * np.cos(la2) * np.cos(lo2 - lo1))) % 360
+	return float(d * 3958.8), float(brg)
 
 '''-------------------------------------------------------------------
 -------------------------------------------------------------------'''
@@ -918,8 +941,8 @@ class Wsjt:		# FT4 / FT8 by WSJT-X's jt9, WSPR by its wsprd: each period's audio
 		add(text): decoded lines to the box; gone(why): jt9 can't run
 	-------------------------------------------------------------------'''
 
-	def __init__(self, kind, add, gone):
-		self.kind, self.add, self.gone = kind, add, gone
+	def __init__(self, kind, add, gone, home=None):		# home: (lat, lon) of my grid, for distance and bearing
+		self.kind, self.add, self.gone, self.home = kind, add, gone, home
 		self.period = self.PERIOD[kind]
 		self.band = (200, 3000)		# jt9 looks across the whole passband
 		self.tu = decode.Tuner(None, 99, 0, 4)		# spectrum only
@@ -1013,13 +1036,21 @@ class Wsjt:		# FT4 / FT8 by WSJT-X's jt9, WSPR by its wsprd: each period's audio
 				w = msg.split()
 				if w and w[-1].lstrip('-').isdigit():		# power, dBm
 					msg += f' dBm ({self.watts(int(w[-1]))})'
-				self.add(f'{self.stamp}  {int(snr):+3d} dB  {float(dt):+.1f} s  {round(float(mhz) * 1e6):4d} Hz  {int(drift):+d}  {msg}\n')
+				self.add(f'{self.stamp}  {int(snr):+3d} dB  {float(dt):+.1f} s  {round(float(mhz) * 1e6):4d} Hz  {int(drift):+d}  {msg}{self.far(msg)}\n')
 			else:
 				snr, dt, hz, msg = m.groups()
-				self.add(f'{self.stamp}  {int(snr):+3d} dB  {float(dt):+.1f} s  {int(hz):4d} Hz  {msg}\n')
+				self.add(f'{self.stamp}  {int(snr):+3d} dB  {float(dt):+.1f} s  {int(hz):4d} Hz  {msg}{self.far(msg)}\n')
 			self.got += 1
 		return
 	# done
+
+	def far(self, msg):		# '   560 mi  352°' for the grid in a message (RR73 looks like one but isn't)
+		g = [x for x in GRID.findall(msg) if x != 'RR73']
+		ll = grid_ll(g[-1]) if g and self.home else None
+		if not ll:
+			return ''
+		mi, brg = path(self.home, ll)
+		return f'   {mi:,.0f} mi  {brg:.0f}°'
 
 	def watts(self, dbm):
 		w = 10 ** (dbm / 10) / 1000
@@ -1101,6 +1132,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		self.hf = 2300		# VARA bandwidth
 		self.pk = 300		# packet baud
 		self.hide = True		# hide direwolf's complaints about non-APRS packets
+		self.grid = 'EM85RP'		# mine, for FT4/FT8/WSPR distance and bearing (right-click > My grid)
 		self.api, self.js8 = None, None		# JS8: socket JS8Call's API sends to; (when it last pinged, its version)
 		self.js8pid = None		# JS8Call when shack started it: closed when JS8 stops (one started by hand is left running)
 		self.scope, self.ready = False, False		# Spectrum button: strip on with no decoder; a radio is open (shack sets it)
@@ -1251,7 +1283,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			self.dec = Scope()
 			return
 		if self.kind in self.WSJT:
-			self.dec = Wsjt(self.kind, self.add, self.died)
+			self.dec = Wsjt(self.kind, self.add, self.died, grid_ll(self.grid))
 			return self.newline()
 		if self.kind in Helper.PROGRAMS:
 			if self.kind == 'VARA':
@@ -1633,11 +1665,27 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			self.check(k, what, b == self.pk, lambda on, b=b: self.packet(b))
 		k.addSeparator()
 		self.check(k, 'Hide complaints about non-APRS packets', self.hide, self.nags)
+		a = m.addAction(f'My grid ({self.grid or "none"})…')		# FT4, FT8, WSPR: distance and bearing from here
+		a.triggered.connect(self.my_grid)
 		a = m.addAction('Clear')
 		a.triggered.connect(self.text.clear)
 		m.exec(w.mapToGlobal(pos))
 		return
 	# menu
+
+	def my_grid(self):
+		g, ok = QInputDialog.getText(self.text, 'My grid', 'Your Maidenhead grid (EM85 or EM85rp), for distance and bearing on FT4, FT8 and WSPR lines; blank = none:', text=self.grid)
+		if not ok:
+			return
+		g = g.strip()
+		if g and not grid_ll(g):
+			return self.status.setText(f'{g}: not a grid (two letters A-R, two digits, maybe two letters a-x)')
+		self.grid = g[:4].upper() + g[4:].lower()
+		if isinstance(self.dec, Wsjt):
+			self.dec.home = grid_ll(self.grid)
+		self.save()
+		return
+	# my_grid
 
 	def check(self, menu, text, on, f):		# a ticked or unticked menu item
 		a = menu.addAction(text)
@@ -1663,6 +1711,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			self.hide = bool(c.get('hide', self.hide))
 			self.scope = bool(c.get('scope', self.scope))
 			self.logging = bool(c.get('log', self.logging))
+			self.grid = str(c.get('grid', self.grid))
 		except (OSError, ValueError, KeyError, TypeError, AttributeError):
 			pass
 		return
@@ -1673,7 +1722,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			return
 		try:
 			with open(decode.CONF, 'w') as f:
-				json.dump({'kind': self.kind if self.kind in self.sq else 'RTTY', 'scope': self.scope, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf, 'pk': self.pk, 'hide': self.hide, 'log': self.logging}, f)
+				json.dump({'kind': self.kind if self.kind in self.sq else 'RTTY', 'scope': self.scope, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf, 'pk': self.pk, 'hide': self.hide, 'log': self.logging, 'grid': self.grid}, f)
 		except OSError as e:
 			log.error(f'decoder settings: {e}')
 		return
