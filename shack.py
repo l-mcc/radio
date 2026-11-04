@@ -53,7 +53,7 @@ HELP = '''
 </table>
 
 <h3>Decoder</h3>
-<p>Pick RTTY, CW, PSK31, VARA, Packet, JS8, FT4, FT8 or WSPR. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dBFS figure before the status is the loudest the radio's audio got in the last second (0 = full scale): orange within 3 dB of the top, red when it clips; with AGC off, keep it out of the red with RF gain. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY), for CW the speed, for PSK31 the quality (how clean the phase is: near 1 = a good signal, about 0.64 = noise; it decodes above 0.8). PSK31: live keyboard chat around 14.070, 7.070, 3.580 (USB); the strip shows each signal as a narrow hump about 60 Hz wide: click one to read it (it fine-tunes itself), or leave Auto tune on for the strongest. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Double-click a callsign (or right-click it > Look up) to see its QRZ page. Lookups go to one Chromium window of shack's own (its own profile in ~/.config/shack-qrz: log in to QRZ there once), reused for every lookup and opened again if you close it. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... WSPR (by wsprd, also WSJT-X's): beacons, every even minute, 2-minute transmissions within 200 Hz of 1500 Hz audio; each line is a station heard: time, SNR, DT, offset, drift (Hz/min), callsign, grid and the power it says it sends (dBm and watts). FT4, FT8 and WSPR lines with a grid end with its distance (miles) and bearing from your grid: right-click > My grid (EM85RP to start). A good way to see where a band is open. Dials (USB): 3.5686, 7.0386, 10.1387, 14.0956, 18.1046, 21.0946, 28.1246 MHz. Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, PSK31, VARA, Packet, JS8, FT4, FT8 or WSPR. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). To keep auto tune off a loud neighbor, right-click the strip beside it: Ignore above (or below) that frequency; the ignored part is dimmed, auto tune stays out of it (a click still tunes there), Search the whole strip undoes it. Remembered for each of RTTY, CW and PSK31. The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dBFS figure before the status is the loudest the radio's audio got in the last second (0 = full scale): orange within 3 dB of the top, red when it clips; with AGC off, keep it out of the red with RF gain. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY), for CW the speed, for PSK31 the quality (how clean the phase is: near 1 = a good signal, about 0.64 = noise; it decodes above 0.8). PSK31: live keyboard chat around 14.070, 7.070, 3.580 (USB); the strip shows each signal as a narrow hump about 60 Hz wide: click one to read it (it fine-tunes itself), or leave Auto tune on for the strongest. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Double-click a callsign (or right-click it > Look up) to see its QRZ page. Lookups go to one Chromium window of shack's own (its own profile in ~/.config/shack-qrz: log in to QRZ there once), reused for every lookup and opened again if you close it. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... WSPR (by wsprd, also WSJT-X's): beacons, every even minute, 2-minute transmissions within 200 Hz of 1500 Hz audio; each line is a station heard: time, SNR, DT, offset, drift (Hz/min), callsign, grid and the power it says it sends (dBm and watts). FT4, FT8 and WSPR lines with a grid end with its distance (miles) and bearing from your grid: right-click > My grid (EM85RP to start). A good way to see where a band is open. Dials (USB): 3.5686, 7.0386, 10.1387, 14.0956, 18.1046, 21.0946, 28.1246 MHz. Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -662,6 +662,10 @@ class Spectrum(QWidget):		# the decoder's averaged audio spectrum, 300-2900 Hz: 
 		band = getattr(d, 'band', None)		# VARA, packet: the audio they decode, shaded
 		if band:
 			p.fillRect(QRect(self.px(band[0]), 0, self.px(band[1]) - self.px(band[0]), h), QColor(32, 160, 32, 60))
+		win = getattr(tu, 'look', None)		# RTTY, CW, PSK31: where auto tune looks; the rest dimmed
+		if win:
+			p.fillRect(QRect(0, 0, self.px(win[0]), h), QColor(0, 0, 0, 120))
+			p.fillRect(QRect(self.px(win[1]), 0, w - self.px(win[1]), h), QColor(0, 0, 0, 120))
 		pts = [QPointF(0, h)] + [QPointF(i, y(v)) for i, v in enumerate(col)] + [QPointF(w, h)]
 		p.setPen(Qt.PenStyle.NoPen)
 		p.setBrush(QColor(styles.decoder['fill']))
@@ -1232,6 +1236,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		self.pk = 300		# packet baud
 		self.hide = True		# hide direwolf's complaints about non-APRS packets
 		self.grid = 'EM85RP'		# mine, for FT4/FT8/WSPR distance and bearing (right-click > My grid)
+		self.win = {}		# decoder: [Hz, Hz] auto tune looks in (right-click the strip > Ignore above / below)
 		self.lookup = Qrz()		# double-click a callsign: its QRZ page, in one window
 		self.api, self.js8 = None, None		# JS8: socket JS8Call's API sends to; (when it last pinged, its version)
 		self.js8pid = None		# JS8Call when shack started it: closed when JS8 stops (one started by hand is left running)
@@ -1410,6 +1415,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			self.dec = decode.Psk(center, self.sq['PSK31'])
 		else:
 			self.dec = decode.Cw(center, self.sq['CW'])
+		w = self.win.get(self.kind)
+		self.dec.tu.look = tuple(w) if w else None
 		quiet(self.sql, self.sql.setValue, round(self.sq[self.kind]))
 		self.newline()
 		return
@@ -1781,6 +1788,18 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		d = self.dec
 		if d and not isinstance(d, (Helper, Scope)):		# ticked = following the strongest signal; unticking locks where it is
 			self.check(m, 'Auto tune', not d.tu.fixed, lambda on: d.tune(None if on else d.tu.center))
+		if w is self.spec and d and not isinstance(d, (Helper, Scope, Wsjt)):		# where auto tune looks, from where the strip was clicked
+			f = round(min(max(self.spec.hz(pos.x()), decode.F0), decode.F1) / 10) * 10
+			lo, hi = d.tu.look or (decode.F0, decode.F1)
+			if f > lo:
+				a = m.addAction(f'Ignore above {f} Hz')
+				a.triggered.connect(lambda: self.set_win((lo, f)))
+			if f < hi:
+				a = m.addAction(f'Ignore below {f} Hz')
+				a.triggered.connect(lambda: self.set_win((f, hi)))
+			if d.tu.look:
+				a = m.addAction('Search the whole strip')
+				a.triggered.connect(lambda: self.set_win(None))
 		r = m.addMenu('RTTY')
 		if decode:
 			for name, b, s, rev in decode.PRESETS:
@@ -1838,6 +1857,22 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 		self.lookup.show(call)
 		return
 
+	'''-------------------------------------------------------------------
+		auto tune's window (Hz, Hz) for this decoder, None = all of it; remembered per decoder
+	-------------------------------------------------------------------'''
+
+	def set_win(self, win):
+		if win:
+			self.win[self.kind] = list(win)
+		else:
+			self.win.pop(self.kind, None)
+		if self.dec and hasattr(self.dec, 'tu'):
+			self.dec.tu.look = win
+		self.spec.update()
+		self.save()
+		return
+	# set_win
+
 	def check(self, menu, text, on, f):		# a ticked or unticked menu item
 		a = menu.addAction(text)
 		a.setCheckable(True)
@@ -1863,6 +1898,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			self.scope = bool(c.get('scope', self.scope))
 			self.logging = bool(c.get('log', self.logging))
 			self.grid = str(c.get('grid', self.grid))
+			self.win = {k: [float(a), float(b)] for k, (a, b) in c.get('win', {}).items() if k in self.sq}
 		except (OSError, ValueError, KeyError, TypeError, AttributeError):
 			pass
 		return
@@ -1873,7 +1909,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), packet (direwol
 			return
 		try:
 			with open(decode.CONF, 'w') as f:
-				json.dump({'kind': self.kind if self.kind in self.sq else 'RTTY', 'scope': self.scope, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf, 'pk': self.pk, 'hide': self.hide, 'log': self.logging, 'grid': self.grid}, f)
+				json.dump({'kind': self.kind if self.kind in self.sq else 'RTTY', 'scope': self.scope, 'baud': self.baud, 'shift': self.shift, 'rev': self.rev, 'sq': self.sq, 'hf': self.hf, 'pk': self.pk, 'hide': self.hide, 'log': self.logging, 'grid': self.grid, 'win': self.win}, f)
 		except OSError as e:
 			log.error(f'decoder settings: {e}')
 		return

@@ -88,6 +88,8 @@ class Tuner:	# averaged spectrum, finds the strongest tone pair (RTTY) or tone (
 		s.df = FS / s.N
 		s.sh = round(shift / s.df)
 		s.lo, s.hi = int(F0 / s.df), int(F1 / s.df) - s.sh	# (low) tone in F0..F1-shift
+		s.fk = (s.lo + np.arange(s.hi - s.lo) + s.sh / 2) * s.df	# center Hz of each candidate
+		s.look = None	# (Hz, Hz): auto tune looks only here (a click still tunes anywhere)
 	def __call__(s, x):	# True when the spectrum was updated
 		s.buf = np.concatenate((s.buf, x))[-s.N:]
 		s.new += len(x)
@@ -99,10 +101,13 @@ class Tuner:	# averaged spectrum, finds the strongest tone pair (RTTY) or tone (
 		s.avg = p if s.avg is None else s.avg + 0.15 * (p - s.avg)	# ~0.6 s
 		sc = s.sc = np.minimum(s.avg[s.lo:s.hi], s.avg[s.lo + s.sh:s.hi + s.sh])	# weaker tone of the pair
 		s.nf = np.median(s.avg[s.lo:s.hi + s.sh])
-		k = int(np.argmax(sc))
+		srch = sc if s.look is None else np.where((s.fk >= s.look[0]) & (s.fk <= s.look[1]), sc, 0.0)
+		k = int(np.argmax(srch))
 		kc = round(s.center / s.df - s.sh / 2) - s.lo
 		cur = sc[kc] if 0 <= kc < len(sc) else 0.0
-		if not s.fixed and s.db(sc[k]) > s.sq and (s.db(cur) < s.sq or sc[k] > s.jump * cur or abs(k - kc) <= 10):
+		if not s.fixed and s.look and not s.look[0] <= s.center <= s.look[1]:	# outside the window: go inside
+			s.center, cur = s.fk[k], srch[k]
+		elif not s.fixed and s.db(srch[k]) > s.sq and (s.db(cur) < s.sq or srch[k] > s.jump * cur or abs(k - kc) <= 10):
 			s.center = (s.lo + k + s.sh / 2) * s.df	# follow drift, jump to a stronger one
 			cur = sc[k]
 		s.snr = s.db(cur)
