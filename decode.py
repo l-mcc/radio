@@ -4,9 +4,10 @@
 #	decode.py rtty [-b BAUD] [-w SHIFT] [-c HZ] [-r] [-s DB]	RTTY, text to stdout, status to stderr
 #	decode.py cw [-c HZ] [-s DB]	CW, strongest signal unless -c
 #	decode.py psk [-c HZ] [-s DB]	PSK31 (BPSK), strongest signal unless -c
-#	decode.py send [-b BAUD] [-w SHIFT] [--cw WPM | --psk] [-c HZ] [-r] [-n SNR] [-l] [text]	test sender
+#	decode.py olivia [-m 8/250] [-c HZ]	Olivia (or --contestia), strongest signal unless -c
+#	decode.py send [-b BAUD] [-w SHIFT] [--cw WPM | --psk | --olivia MODE [--contestia]] [-c HZ] [-r] [-n SNR] [-l] [text]	test sender
 #	decode.py rec [SECONDS]	record Digital out to rec.wav (default 60 s)
-#	decoded text also goes to cw.txt / rtty.txt in the current folder, overwritten each run
+#	decoded text also goes to cw.txt / rtty.txt / psk.txt / olivia.txt in the current folder, overwritten each run
 #	the UI keeps its settings in decode.json next to this file
 #	DWD weather: -r -b 50 -w 450
 import sys, os, json, socket, time, argparse, select, curses, locale, wave
@@ -48,6 +49,80 @@ VARICODE = ('1010101011 1011011011 1011101101 1101110111 1011101011 1101011111 1
 UNVARI = {int(c, 2): chr(i) for i, c in enumerate(VARICODE)}
 PSK = 31.25	# baud
 PSR = 1000	# PSK31 works at 1000 S/s: 32 samples a symbol
+
+# Olivia / Contestia MFSK (Pawel Jalocha), as in fldigi's pj_mfsk.h: 64-symbol blocks, one Walsh-coded character per bit of a symbol
+OLIVIA = ['8/250', '16/500', '32/1000', '8/500', '16/1000', '4/250', '4/125', '8/1000']	# tones/bandwidth
+SCRAMBLE = (0xE257E6D0291574EC, 0xEDB88320)	# Olivia, Contestia
+OSR = 8000	# Olivia works at 8000 S/s
+
+def fht(x):	# Jalocha's forward Hadamard transform on the last axis (b + a, b - a)
+	x = np.array(x, float)
+	n, st = x.shape[-1], 1
+	while st < n:
+		y = x.reshape(x.shape[:-1] + (n // (2 * st), 2, st))
+		a, b = y[..., 0, :].copy(), y[..., 1, :].copy()
+		y[..., 0, :], y[..., 1, :] = a + b, b - a
+		st *= 2
+	return x
+
+def ifht(x):	# and its inverse as Jalocha has it (a - b, a + b, big steps first)
+	x = np.array(x, float)
+	n = x.shape[-1]
+	st = n // 2
+	while st:
+		y = x.reshape(x.shape[:-1] + (n // (2 * st), 2, st))
+		a, b = y[..., 0, :].copy(), y[..., 1, :].copy()
+		y[..., 0, :], y[..., 1, :] = a - b, a + b
+		st //= 2
+	return x
+
+def binary(g):	# Gray -> binary
+	b = 0
+	while g:
+		b, g = b ^ g, g >> 1
+	return b
+
+class OliviaCode:	# the FEC layer: a block of BitsPerSymbol characters <-> N symbols (Olivia 7-bit characters, 64; Contestia 6-bit, 32)
+	def __init__(s, bits, contestia=False):
+		s.B, s.cont = bits, contestia
+		s.N = n = 32 if contestia else 64
+		code, shift = SCRAMBLE[contestia], 5 if contestia else 13
+		t = np.arange(n)
+		s.flip = np.array([[-1.0 if code >> ((i * shift + k) & (n - 1)) & 1 else 1.0 for k in range(n)] for i in range(bits)])	# scrambling, per character and time
+		s.rot = (np.arange(bits)[:, None] + t[None, :]) % bits	# character i is bit (i + t) % B of symbol t
+		s.tt = np.broadcast_to(t, (bits, n))
+	def encode(s, chars):	# -> N symbols (before Gray)
+		n = s.N
+		out = np.zeros(n, int)
+		for i, c in enumerate(chars):
+			c = s.cchar(c) if s.cont else c & 127
+			v = np.zeros(n)
+			if c < n:
+				v[c] = 1
+			else:
+				v[c - n] = -1
+			v = ifht(v) * s.flip[i]
+			out |= (v < 0).astype(int) << s.rot[i]
+		return out
+	def decode(s, soft):	# soft bits [offset, N symbols, B] (+ = 0) -> characters, signal, noise, each [offset, B]
+		h = fht(soft[..., s.tt, s.rot] * s.flip)	# [..., char, time]
+		k = np.argmax(np.abs(h), -1)
+		pk = np.take_along_axis(h, k[..., None], -1)[..., 0]
+		c = k + s.N * (pk < 0)
+		return (s.uchar(c) if s.cont else c), np.abs(pk), ((h * h).sum(-1) - pk * pk) / (s.N - 1)
+	@staticmethod
+	def cchar(c):	# Contestia's 6-bit alphabet
+		c = chr(c).upper()
+		return 59 if c == ' ' else 60 if c == '\r' else 0 if c == '\n' else ord(c) - 32 if 33 <= ord(c) <= 90 else 61 if ord(c) == 8 else 0 if ord(c) == 0 else ord('?') - 32
+	@staticmethod
+	def uchar(c):
+		c = np.asarray(c)
+		return np.where(c == 0, 0, np.where(c == 59, 32, np.where(c == 60, 13, np.where(c == 61, 8, c + 32))))
+
+def omode(mode):	# '16/500' -> tones, bandwidth, bits per symbol, FFT length (= symbol window, 2 symbols) at 8000 S/s
+	t, bw = map(int, mode.split('/'))
+	b = t.bit_length() - 1
+	return t, bw, b, 1 << (b + 7 - ((bw // 125).bit_length() - 1))
 
 def lowpass(fc, fs, n):
 	t = np.arange(n) - (n - 1) / 2
@@ -375,6 +450,122 @@ class Psk:	# BPSK31: decoder(x) -> (text, new station)
 		txt = ''.join(out)
 		return (txt if s.op else ''), new
 
+class Olivia:	# Olivia / Contestia: decoder(x) -> (text, new station). Finds the block timing and the frequency itself, like fldigi
+	S = 4	# spectra per symbol: timing resolution a quarter symbol
+	M = 8	# frequency search: this many FFT bins either side of the center (fldigi's SyncMargin)
+	TH = 4.0	# averaged block S/N to lock at (a Walsh peak this far above the rest)
+	BLK = 3.6	# and the block's own, to print it: noise reads about 3
+	K = 4	# blocks kept per phase: on lock, the ones the average was still building on get printed too
+	def __init__(s, mode, center, contestia=False):
+		s.mode, s.cont = mode, contestia
+		s.T, s.bw, s.B, s.L = omode(mode)
+		s.sep = s.L // 2	# samples per symbol at 8000 S/s
+		s.hop = s.sep // s.S
+		s.df = OSR / s.L
+		s.code = OliviaCode(s.B, contestia)
+		s.N = s.code.N	# symbols per block
+		s.tu = Tuner(center, 99, 0, 2)	# the strip only
+		s.fixed = center is not None
+		s.center = center or 1500.0
+		s.lp = Fir(lowpass(3400, FS, 255), FS // OSR)
+		s.win = 1 - np.cos(2 * np.pi * np.arange(s.L) / s.L)	# the symbol's own shape
+		gray = np.array([binary(k) for k in range(s.T)])
+		s.sgn = np.array([[1.0 - 2 * (gray[k] >> j & 1) for j in range(s.B)] for k in range(s.T)])	# tone -> soft bit signs
+		s.cr, s.op, s.said = False, False, None
+		s.setup()
+	def setup(s):	# tones for this center; the sync search starts over
+		fc = s.bw * (1 - 0.5 / s.T) / 2	# as fldigi
+		first = int(s.L / 16 * (s.center - fc) / 500) + 1	# FFT bin of the lowest tone
+		s.bins = first + np.arange(-s.M, s.M + 1)[:, None] + 2 * np.arange(s.T)[None, :]	# [offset, tone]
+		s.buf, s.spec, s.n = np.zeros(0), [], 0
+		s.acc = np.zeros((s.N * s.S, 2 * s.M + 1))	# block S/N per block phase and offset, averaged over blocks
+		s.chars = np.zeros((s.K, s.N * s.S, 2 * s.M + 1, s.B), int)	# the last K blocks' characters at each
+		s.q = np.zeros((s.K, *s.acc.shape))	# and their own S/N
+		s.best, s.snr, s.off, s.last, s.fresh = 0, 0.0, 0, -10**9, False
+		s.band = (s.center - s.bw / 2, s.center + s.bw / 2)
+		if not s.fixed:
+			s.tu.center = s.center
+	def tune(s, f):	# None = auto
+		s.tu.fixed = s.fixed = f is not None
+		if f is not None:
+			s.center = s.tu.center = f
+			s.setup()
+	def info(s):
+		return f'{"Contestia" if s.cont else "Olivia"} {s.mode}  {s.tu.center:.0f} Hz  S/N {s.snr:.1f}'
+	def auto(s):	# not decoding: the strongest bandwidth-wide stretch of the spectrum (inside the window, if there is one)
+		if s.fixed or s.op or s.tu.avg is None:
+			return
+		w = max(1, round(s.bw / s.tu.df))
+		lo, hi = s.tu.look or (F0, F1)
+		k0, k1 = int(lo / s.tu.df), int(hi / s.tu.df)
+		if k1 - k0 <= w:
+			return
+		a = s.tu.avg[k0:k1]
+		box = np.percentile(np.lib.stride_tricks.sliding_window_view(a, w), 30, axis=-1)	# filled across the band, as Olivia is; one strong carrier isn't
+		i = int(np.argmax(box))
+		c = (k0 + i + w / 2) * s.tu.df
+		now = box[int(np.clip((s.center - s.bw / 2) / s.tu.df - k0, 0, len(box) - 1))]
+		if abs(c - s.center) > s.bw / 4 and box[i] > 1.25 * max(np.median(a), now):	# a signal 1 dB up, and on more than where we are
+			s.center = c
+			s.setup()
+	def block(s):	# the N symbols ending at the newest spectrum, every offset: S/N, characters
+		e = np.stack(s.spec[-1 - (s.N - 1) * s.S::s.S])[:, s.bins] ** 4	# [time, offset, tone], energy squared as Jalocha
+		soft = (e @ s.sgn) / np.maximum(e.sum(-1, keepdims=True), 1e-30)	# [time, offset, bit]
+		ch, sig, noise = s.code.decode(np.swapaxes(soft, 0, 1))	# [offset, char]
+		return sig.mean(-1) / np.sqrt(noise.mean(-1) + 1e-30), ch
+	def text(s, chars):
+		out = ''
+		for c in chars:
+			c = chr(int(c))
+			lf = c == '\n' and s.cr	# CR LF: one new line
+			s.cr = c == '\r'
+			if s.cr:
+				out += '\n'
+			elif not lf and (c == '\n' or c.isprintable()):
+				out += c
+		return out
+	def __call__(s, x):
+		new = False
+		if s.tu(x):
+			s.auto()
+		s.buf = np.concatenate((s.buf, s.lp(x).real))
+		out = ''
+		i = 0
+		while i + s.L <= len(s.buf):
+			s.spec.append(np.abs(np.fft.rfft(s.buf[i:i + s.L] * s.win)))
+			i += s.hop
+			if len(s.spec) > s.N * s.S:
+				del s.spec[0]
+			s.n += 1
+			if len(s.spec) < (s.N - 1) * s.S + 1:
+				continue
+			P = s.N * s.S
+			ph = s.n % P
+			k = s.n // P % s.K
+			q, s.chars[k, ph] = s.block()
+			s.q[k, ph] = q
+			s.acc[ph] += 0.25 * (q - s.acc[ph])	# fldigi integrates 4 blocks
+			b, o = np.unravel_index(np.argmax(s.acc), s.acc.shape)
+			s.best, s.snr, s.off = b, float(s.acc[b, o]), o - s.M
+			was = s.op
+			s.op = s.snr > (s.TH - 0.5 if was else s.TH)
+			s.fresh |= s.op and not was
+			if s.op and s.S <= (ph - b) % P < 2 * s.S and s.n - s.last > P // 2:	# a symbol after the best phase, which dithers: its block, once
+				s.last = s.n
+				nb = (s.n - (ph - b) % P) // P	# that block's number
+				for j in range(s.K - 1 if s.fresh else 0, -1, -1):
+					kb = (nb - j) % s.K
+					if s.q[kb, b, o] < s.BLK:	# not started yet, or the signal stopped and the average hasn't caught up
+						continue
+					if s.said is None or abs(s.center + s.off * s.df - s.said) > s.bw / 4:
+						s.said, new = s.center + s.off * s.df, True
+					out += s.text(s.chars[kb, b, o])
+				s.fresh = False
+		s.buf = s.buf[i:]
+		c = s.center + s.off * s.df if s.op else s.center
+		s.tu.center, s.band = c, (c - s.bw / 2, c + s.bw / 2)	# the strip's marker and shading: where it decodes
+		return out, new
+
 def listen(port):
 	sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	try:
@@ -670,6 +861,24 @@ def psk(a):	# BPSK31: reversals to start, the text, then carrier; a reversal swi
 	e = np.concatenate(env)
 	return noisy(0.3 * e * np.sin(2 * np.pi * a.center * np.arange(len(e)) / FS), a.snr)
 
+def olivia(a):	# Olivia / Contestia: an idle block, the text, an idle block; raised-cosine symbols two long, overlapping
+	T, bw, B, L = omode(a.olivia)
+	code = OliviaCode(B, a.contestia)
+	c = [0] * B + [ord(ch) for ch in a.text] + [0] * B
+	c += [0] * (-len(c) % B)
+	syms = np.concatenate([code.encode(c[i:i + B]) for i in range(0, len(c), B)])
+	first = int(L / 16 * (a.center - bw * (1 - 0.5 / T) / 2) / 500) + 1
+	r, sep = FS // OSR, L // 2
+	n, hop = L * r, sep * r
+	shape = (1 - np.cos(2 * np.pi * np.arange(n) / n)) / 2
+	y = np.zeros(hop * (len(syms) + 1))
+	ph = 0.0
+	for k, v in enumerate(syms):
+		f = (first + 2 * (v ^ v >> 1)) * OSR / L	# Gray
+		ph += np.pi / 2 * np.random.randint(4)	# as Jalocha: a random quarter turn each symbol
+		y[k * hop:k * hop + n] += 0.3 * shape * np.cos(2 * np.pi * f * np.arange(n) / FS + ph)
+	return noisy(y, a.snr)
+
 def noisy(y, snr):	# snr in 3 kHz, against a 0.3 peak tone
 	if snr is not None:
 		y = y + np.random.normal(0, np.sqrt(0.045 / 10 ** (snr / 10) * (FS / 2) / 3000), len(y))
@@ -679,7 +888,7 @@ def send(a):
 	sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	t0, n = time.monotonic(), 0
 	while True:
-		y = keyed(a) if a.cw else psk(a) if a.psk else afsk(a)
+		y = keyed(a) if a.cw else psk(a) if a.psk else olivia(a) if a.olivia else afsk(a)
 		for i in range(0, len(y) - 479, 480):
 			sk.sendto(y[i:i + 480].tobytes(), ('127.0.0.1', a.port))
 			n += 1
@@ -702,7 +911,7 @@ def rec(port, secs):	# raw Digital out to rec.wav, for testing decoders on real 
 	print('done', file=sys.stderr)
 
 def main():
-	cmd = sys.argv[1] if sys.argv[1:2] and sys.argv[1] in ('rtty', 'cw', 'psk', 'send', 'rec') else 'ui'
+	cmd = sys.argv[1] if sys.argv[1:2] and sys.argv[1] in ('rtty', 'cw', 'psk', 'olivia', 'send', 'rec') else 'ui'
 	argv = sys.argv[2:] if cmd in sys.argv[1:2] else sys.argv[1:]
 	p = argparse.ArgumentParser(prog='decode.py' + ('' if cmd == 'ui' else ' ' + cmd))
 	p.add_argument('-p', '--port', type=int, default=7355)
@@ -721,17 +930,26 @@ def main():
 	elif cmd == 'send':
 		p.add_argument('--cw', type=float, metavar='WPM', help='send CW instead of RTTY')
 		p.add_argument('--psk', action='store_true', help='send PSK31 instead of RTTY')
-		p.add_argument('-c', '--center', type=float, help='center Hz (default 2210, CW 700, PSK31 1000)')
+		p.add_argument('--olivia', metavar='MODE', choices=OLIVIA, help='send Olivia, e.g. 8/250')
+		p.add_argument('--contestia', action='store_true', help='with --olivia: Contestia')
+		p.add_argument('-c', '--center', type=float, help='center Hz (default 2210, CW 700, PSK31 1000, Olivia 1500)')
 		p.add_argument('-n', '--snr', type=float, help='add noise, dB in 3 kHz')
 		p.add_argument('-l', '--loop', action='store_true')
 		p.add_argument('text', nargs='?')
 		a = p.parse_args(argv)
-		a.center = a.center or (700 if a.cw else 1000 if a.psk else 2210)
+		a.center = a.center or (700 if a.cw else 1000 if a.psk else 1500 if a.olivia else 2210)
 		a.text = a.text or ('CQ CQ CQ DE N0CALL N0CALL K\nUR RST 599 5NN = NAME LARRY QTH ASHEVILLE NC + 73 TU\n' if a.cw else
-			'cq cq cq de n0call n0call pse k\nName is Larry, QTH Asheville NC. Rig: FTdx10, 24 W to an EFHW. 73!\n' if a.psk else
+			'cq cq cq de n0call n0call pse k\nName is Larry, QTH Asheville NC. Rig: FTdx10, 24 W to an EFHW. 73!\n' if a.psk or a.olivia else
 			'RYRYRY CQ CQ CQ DE TEST TEST K\nTHE QUICK BROWN FOX 0123456789 -?:(),./\n')
 		setmode(a.baud, a.shift)
 		send(a)
+	elif cmd == 'olivia':
+		p.add_argument('-m', '--mode', choices=OLIVIA, default='8/250', help='tones/bandwidth, default 8/250')
+		p.add_argument('--contestia', action='store_true')
+		p.add_argument('-c', '--center', type=float, help='Hz (default: auto)')
+		a = p.parse_args(argv)
+		a.kind = 'Olivia'
+		plain(Olivia(a.mode, a.center, a.contestia), a)
 	else:
 		p.add_argument('-c', '--center', type=float, help='Hz (default: auto)')
 		sq = 10 if cmd == 'cw' else 2 if cmd == 'psk' else 6	# PSK31: the quality gate does most of the work
