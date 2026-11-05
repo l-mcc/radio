@@ -1,5 +1,6 @@
 CXX = g++
 MODE ?= O3
+PREFIX ?= /usr/local
 CXXFLAGS = -std=c++17 -Wall -Wextra -pthread -march=native -$(MODE)
 LDFLAGS = -L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,--disable-new-dtags
 LDLIBS = -lsdrplay_api -lliquid -lrnnoise -lpulse-simple -lpulse -lsqlite3
@@ -23,6 +24,13 @@ waterfall.o: waterfall.cpp waterfall.h control.h
 demod.o: demod.cpp demod.h
 	$(CXX) $(CXXFLAGS) -c demod.cpp -o demod.o
 
-.PHONY: clean
+.PHONY: clean install uninstall
 clean:
 	rm -f rspdx $(OBJS)
+
+install: rspdx	# sudo make -f rspdx.make install
+	install -D -m 755 rspdx $(DESTDIR)$(PREFIX)/bin/rspdx
+
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/rspdx
+
