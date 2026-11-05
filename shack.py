@@ -56,7 +56,7 @@ HELP = '''
 <p>Pick RTTY, CW, PSK31, Olivia, VARA, ARDOP, Packet, JS8, FT4, FT8 or WSPR. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, ARDOP by ardopcf, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). To keep auto tune off a loud neighbor, right-click the strip beside it: Ignore above (or below) that frequency; the ignored part is dimmed, auto tune stays out of it (a click still tunes there), Search the whole strip undoes it. Remembered for each of RTTY, CW, PSK31 and Olivia. The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dBFS figure before the status is the loudest the radio's audio got in the last second (0 = full scale): orange within 3 dB of the top, red when it clips; with AGC off, keep it out of the red with RF gain. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY), for CW the speed, for PSK31 the quality (how clean the phase is: near 1 = a good signal, about 0.64 = noise; it decodes above 0.8). PSK31: live keyboard chat around 14.070, 7.070, 3.580 (USB); the strip shows each signal as a narrow hump about 60 Hz wide: click one to read it (it fine-tunes itself), or leave Auto tune on for the strongest. Olivia: the broad, steady, warbling signals (often 250 to 1000 Hz wide, around 14.072-14.076 and 7.070-7.075 USB) that sound like a choir of beeps; slow (1.5 to 2.5 characters a second) but it reads through noise and fading far below where PSK31 gives up. Pick the mode that matches the signal's width on the strip, right-click > Olivia: 8/250 and 16/500 are the common ones, 32/1000 the widest (the first number is tones, the second the width in Hz); the shaded part of the strip is the width it decodes and should sit over the signal. A wrong mode decodes nothing. It finds the signal (auto: the strongest stretch that wide, not a narrow carrier) and the timing itself, and searches about 125 Hz either side of the shading for the exact frequency, so a click near the middle of the signal is enough. It takes a few blocks to lock (8/250: about 8 s) and then prints those too; text comes a block at a time. The status line says the mode, the frequency, S/N (the code's own measure: above 4 it decodes, noise reads about 3) and searching or decoding. Contestia (same menu) is the faster sibling, upper case only. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Double-click a callsign (or right-click it > Look up) to see its QRZ page. Lookups go to one Chromium window of shack's own (its own profile in ~/.config/shack-qrz: log in to QRZ there once), reused for every lookup and opened again if you close it. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, ardop.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. ARDOP (Winlink's other HF mode, often heard near the VARA frequencies; tune it to 1500 Hz audio like VARA): by ardopcf in its receive-only mode, which decodes every frame it hears, whoever's session it is. Like JS8, shack plays the audio into a sound device of its own (shack-ARDOP) and ardopcf listens to it (through ALSA's pulse device: if ardopcf stops at once, apt install libasound2-plugins). Each frame is a line: UTC, [session ID] (FF = not in a session: calls, pings, ID frames), frame type (its name says the modulation and bandwidth: 4PSK.500.100.E), Q (decode quality, out of 100; on DataACK / DataNAK the other side's), then the callers (ConReq: who > whom, Ping), the station's call and grid on ID frames (with distance and bearing from your grid), or the data as text under it (Winlink mail itself is compressed: shown as binary). The shaded part of the strip follows the bandwidth of the last frame. An idle link trades DataACK and IDLE frames every few seconds: hidden unless you untick right-click > ARDOP > Hide. It needs ardopcf (github.com/pflarue/ardop: make) on the PATH or in ~/installed/builds/ardop. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... WSPR (by wsprd, also WSJT-X's): beacons, every even minute, 2-minute transmissions within 200 Hz of 1500 Hz audio; each line is a station heard: time, SNR, DT, offset, drift (Hz/min), callsign, grid and the power it says it sends (dBm and watts). FT4, FT8 and WSPR lines with a grid end with its distance (miles) and bearing from your grid: right-click > My grid (EM85RP to start). A good way to see where a band is open. Dials (USB): 3.5686, 7.0386, 10.1387, 14.0956, 18.1046, 21.0946, 28.1246 MHz. Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
-<p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
+<p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar is for xara (rigctld PTT); the radio is unkeyed whenever it is closed.</p>
@@ -358,6 +358,7 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 		self.db.execute("CREATE TABLE IF NOT EXISTS bookmarks (hz INTEGER NOT NULL, mode TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', hits INTEGER NOT NULL DEFAULT 1,"
 			" settings TEXT NOT NULL DEFAULT '{}', updated TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (hz, mode))")
 		self.db.execute("CREATE TABLE IF NOT EXISTS last (radio TEXT PRIMARY KEY, hz INTEGER NOT NULL, mode TEXT NOT NULL, settings TEXT NOT NULL DEFAULT '{}')")		# where each radio was left
+		self.db.execute("CREATE TABLE IF NOT EXISTS prefs (k TEXT PRIMARY KEY, v TEXT NOT NULL)")		# the table's sort
 		if new and Path(old).exists():
 			self.copy_rspdx(old)
 		self.db.commit()
@@ -384,15 +385,30 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 	# copy_rspdx
 
 	'''-------------------------------------------------------------------
-		all bookmarks, most picked first
+		all bookmarks sorted by a column of the table (SORTS), down = Z-A / high to low; ties by frequency; unnamed ones last when sorted by name
 	-------------------------------------------------------------------'''
 
-	def list(self):
+	SORTS = ('name', 'hz', 'mode', 'hits')
+
+	def list(self, col=3, down=True):
 		out = []
-		for hz, mode, name, hits, s in self.db.execute('SELECT hz, mode, name, hits, settings FROM bookmarks ORDER BY hits DESC, hz'):
+		for hz, mode, name, hits, s in self.db.execute('SELECT hz, mode, name, hits, settings FROM bookmarks ORDER BY hz'):
 			out.append(dict(hz=hz, mode=mode, name=name, hits=hits, settings=json.loads(s)))
-		return out
+		k = self.SORTS[col]
+		if k == 'name':
+			named = sorted((b for b in out if b['name']), key=lambda b: b['name'].casefold(), reverse=down)
+			return named + [b for b in out if not b['name']]
+		return sorted(out, key=lambda b: b[k], reverse=down)		# stable: ties keep frequency order
 	# list
+
+	def pref(self, k, default=None):
+		row = self.db.execute('SELECT v FROM prefs WHERE k = ?', (k,)).fetchone()
+		return json.loads(row[0]) if row else default
+
+	def set_pref(self, k, v):
+		self.db.execute('INSERT OR REPLACE INTO prefs (k, v) VALUES (?, ?)', (k, json.dumps(v)))
+		self.db.commit()
+		return
 
 	def find(self, hz, mode):
 		return next((b for b in self.list() if b['hz'] == hz and b['mode'] == mode), None)
@@ -2255,13 +2271,18 @@ class Shack(QMainWindow):
 		switches.addWidget(self.save)
 		switches.addStretch()		# buttons keep their size when others are hidden
 		self.adc = QProgressBar(minimum=-60, maximum=0, value=-60, format='', toolTip='Broadband level into the RSPdx ADC; red above -6 dBFS: back off the gain')
-		self.bms = QTableWidget(0, 4, toolTip='Double-click: go there.  Right-click: rename or delete.  Save adds the current station.')
+		self.bms = QTableWidget(0, 4, toolTip='Double-click: go there.  Right-click: rename or delete.  Save adds the current station.  Click a column heading to sort by it (again: the other way).')
 		self.bms.setHorizontalHeaderLabels(['Name', 'MHz', 'Mode', 'Hits'])
 		self.bms.verticalHeader().hide()
 		self.bms.setMinimumWidth(320)		# the button row is wide; don't let it squeeze the table away
 		hh = self.bms.horizontalHeader()
 		hh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
 		hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)		# Name takes the spare width
+		self.bmsort = self.bm.pref('sort', [3, True])		# column, down (Z-A / high to low): most picked first to start
+		hh.setSortIndicatorShown(True)
+		hh.setSectionsClickable(True)
+		hh.setSortIndicator(self.bmsort[0], Qt.SortOrder.DescendingOrder if self.bmsort[1] else Qt.SortOrder.AscendingOrder)
+		hh.sortIndicatorChanged.connect(self.bm_sort)		# Qt flips the arrow on a click; the rows are sorted here, not by Qt (bmlist[row] must stay the row's bookmark)
 		self.bms.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 		self.bms.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 		self.bms.cellDoubleClicked.connect(lambda r, c: self.bm_pick(r))
@@ -2929,7 +2950,7 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def show_bms(self):
-		self.bmlist = self.bm.list()
+		self.bmlist = self.bm.list(*self.bmsort)
 		self.bms.setRowCount(len(self.bmlist))
 		for r, b in enumerate(self.bmlist):
 			for c, t in enumerate((b['name'], f"{b['hz'] / 1e6:.6f}", b['mode'], str(b['hits']))):
@@ -2941,6 +2962,17 @@ class Shack(QMainWindow):
 		self.mark()
 		return
 	# show_bms
+
+	def bm_sort(self, col, order):		# a heading clicked: Qt's new arrow. A new column starts A-Z / low to high, Hits most first
+		down = order == Qt.SortOrder.DescendingOrder
+		if col != self.bmsort[0] and Bookmarks.SORTS[col] == 'hits':
+			down = True
+			quiet(self.bms.horizontalHeader(), self.bms.horizontalHeader().setSortIndicator, col, Qt.SortOrder.DescendingOrder)
+		self.bmsort = [col, down]
+		self.bm.set_pref('sort', self.bmsort)
+		self.show_bms()
+		return
+	# bm_sort
 
 	def mark(self):		# rows at the dial's frequency, any mode, shaded
 		for r, b in enumerate(self.bmlist):
