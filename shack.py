@@ -952,6 +952,7 @@ class Ardop(Helper):		# ARDOP by ardopcf in receive-only mode (RXO: every frame 
 	def __init__(self, add, gone, quiet, home):
 		super().__init__('ARDOP', ['--playback', '--raw', '--format=s16le', '--rate=48000', '--channels=1', f'--device={self.SINK}', '--latency-msec=200'], (500, 2500), add, gone)
 		self.quiet, self.home = quiet, home
+		self.gain = 0.5		# 6 dB below what the radio sends: ardopcf warns of clipping at 32000 of 32767 (static crashes, the fence)
 		self.fr, self.sid, self.id = None, '--', None		# frame being read: [name, quality, extra]; its session ID; (call, grid) of the last ID frame
 		self.skip, self.need, self.body = 0, 0, []		# lines to skip (its hex dump); bytes of payload text still to come, and its lines
 		self.said, self.got = '', ''		# ardopcf's last line that wasn't a frame; the last frame shown, for the status line
