@@ -387,7 +387,26 @@ if __name__ == '__main__':
 			ap.add_argument('-a', '--all', action='store_true', help='also ACK/NACK/REQ/IDLE, blind, dropped, summary lines')
 			ap.add_argument('-g', '--grid', default=home_grid(), help="your grid for distances (default: shack's, decode.json)")
 			ap.add_argument('--plain', action='store_true', help='no colors')
-			a = ap.parse_args()
+
+			tst = 2
+			match tst:
+				case 1:
+					a = ap.parse_args([])		# pvara.py: whole vara.log, then follow it
+				case 2:
+					a = ap.parse_args(['-q'])		# pvara.py -q: whole vara.log, then quit
+				case 3:
+					a = ap.parse_args(['-q', 'old.log'])		# pvara.py -q old.log: another log, then quit
+				case 4:
+					a = ap.parse_args(['-a', '-q'])		# pvara.py -a -q: also the bookkeeping
+				case 5:
+					a = ap.parse_args(['-e'])		# pvara.py -e: only new lines
+				case 6:
+					a = ap.parse_args(['-g', 'FM05ab', '-q'])		# pvara.py -g FM05ab -q: distances from another grid
+				case 7:
+					a = ap.parse_args(['-h'])		# pvara.py -h: help, then exits
+				case _:
+					a = ap.parse_args()		# whatever launch.json / the command line gives
+			# match tst
 		else:
 			ap = argparse.ArgumentParser(description='vara.log, one line per transmission', epilog=EXAMPLES, formatter_class=argparse.RawDescriptionHelpFormatter)
 			ap.add_argument('log', nargs='?', default=str(HERE / 'vara.log'), help='default: vara.log next to pvara.py')
