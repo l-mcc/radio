@@ -57,6 +57,7 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 	LINKEND = re.compile(r'link (\S+) → (\S+) ended \((.*?)\) after ([\d.]+) s: (\d+) B caller→answerer, (\d+) B answerer→caller')
 	BEACON = re.compile(r'(\d{1,3})([A-Z])([A-R]{2}\d{2}[A-X]{2})([A-Z0-9/]+)\s*$')		# VarAC: band, letter (?), 6-char grid, call
 	BUSY = ('ACK', 'NACK', 'REQ', 'IDLE', 'GO AHEAD', 'NOTHING TO SEND', 'START LEVEL', 'code ')		# session bookkeeping, hidden unless -a
+	GAP = 30		# s of silence that ends a conversation (blank line)
 	COLORS = {'BEACON': consts.KGRN, 'CQ': consts.KYEL, 'CONNECT': consts.KCYN, 'REPLY': consts.KCYN, 'LINK': consts.KCYN, 'END': consts.KCYN, 'QRT': consts.KCYN, 'LOST': consts.KRED}
 
 	'''-------------------------------------------------------------------
@@ -70,6 +71,8 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 		self.group = []		# a top-level line and its indented lines: [(stamp, text), ...]
 		self.unproto = None		# an UNPROTO header waiting for its data frame: (stamp, code, name, sn)
 		self.link = None		# (caller, answerer) from the last HEADER
+		self.last = None		# (seconds of day, solo) of the last line printed; None = nothing to separate from
+		self.cut = False		# next line starts a new conversation
 		return
 	# __init__
 
@@ -85,11 +88,13 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 			self.flush()
 			self.end_unproto()
 			self.out('\n' + line)
+			self.last = None
 			return
 		m = self.STAMP.match(line)
 		if not m:
 			self.flush()
 			self.out(line)
+			self.cut = True
 			return
 		t, text = (m[1], m[2]) if m[1] else (m[3], m[4])
 		if text.startswith('  ') and self.group:
@@ -144,6 +149,7 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 		if m:
 			self.say(t, 'END', f'{m[1]} → {m[2]}', f'{m[3]}, {float(m[4]):.0f} s, {m[5]}/{m[6]} B')
 			self.link = None
+			self.cut = True
 			return
 		if top.startswith('learned '):
 			self.say(t, 'learned', top[8:])
@@ -166,7 +172,7 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 		t, code, name, sn = self.unproto
 		self.unproto = None
 		kind = 'BEACON' if name == 'KISS' else name
-		self.say(t, kind, '(data frame missed)', sn=sn)
+		self.say(t, kind, '(data frame missed)', sn=sn, solo=True)
 		return
 	# end_unproto
 
@@ -185,16 +191,16 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 				b = self.BEACON.match(k[3])
 				if b:
 					call, grid = b[4], b[3][:4] + b[3][4:].lower()
-					self.say(t, 'BEACON', f'{call:<10} {grid}  {b[1]}m  {b[2]}', self.far(grid), sn)
+					self.say(t, 'BEACON', f'{call:<10} {grid}  {b[1]}m  {b[2]}', self.far(grid), sn, True)
 				else:
-					self.say(t, 'KISS', f'"{k[3].rstrip()}"', sn=sn)
+					self.say(t, 'KISS', f'"{k[3].rstrip()}"', sn=sn, solo=True)
 				return
 			c = self.CQ.match(x)
 			if c:
-				self.say(t, 'CQ', f'{c[1]:<10} {c[2] + " Hz" if c[2] else ""}', sn=sn)
+				self.say(t, 'CQ', f'{c[1]:<10} {c[2] + " Hz" if c[2] else ""}', sn=sn, solo=True)
 				return
 		kind = 'BEACON' if name == 'KISS' else name
-		self.say(t, kind, '(data frame failed CRC)' if bad else '(no text)', sn=sn)
+		self.say(t, kind, '(data frame failed CRC)' if bad else '(no text)', sn=sn, solo=True)
 		return
 	# broadcast
 
@@ -208,6 +214,8 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 		for x in rest:
 			h = self.HEADER.match(x)
 			if h:
+				if self.link and self.link != (h[1], h[2]):
+					self.cut = True		# other stations: another conversation
 				self.link = (h[1], h[2])
 				self.say(t, 'LINK', f'{h[1]} → {h[2]}', f'{h[3]}, compression {h[4]}' + (', encrypted' if h[5] != '0' else ''))
 				continue
@@ -262,10 +270,39 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 	# far
 
 	'''-------------------------------------------------------------------
+		'HH:MM:SS' (or plain seconds) -> seconds
+	-------------------------------------------------------------------'''
+
+	def secs(self, t):
+		if ':' not in t:
+			return float(t)
+		h, m, s = t.split(':')
+		return int(h) * 3600 + int(m) * 60 + int(s)
+	# secs
+
+	'''-------------------------------------------------------------------
+		blank line before a line that isn't part of the last one's conversation:
+		beacons and CQs stand alone; END, other calls or GAP s of silence end a session
+	-------------------------------------------------------------------'''
+
+	def space(self, t, solo):
+		now = self.secs(t)
+		if self.last:
+			was, alone = self.last
+			d = (now - was) % 86400
+			if self.cut or solo or alone or min(d, 86400 - d) > self.GAP:
+				self.out('')
+		self.last = (now, solo)
+		self.cut = False
+		return
+	# space
+
+	'''-------------------------------------------------------------------
 		one output line: time, kind, who/what, more, S/N
 	-------------------------------------------------------------------'''
 
-	def say(self, t, kind, what, more='', sn=None):
+	def say(self, t, kind, what, more='', sn=None, solo=False):
+		self.space(t, solo)
 		s = f'{t}  {kind:<8} {what:<26} {more}'.rstrip()
 		if sn:
 			s = f'{s:<72} SN {sn}'
