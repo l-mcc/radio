@@ -16,6 +16,16 @@ HERE = Path(__file__).resolve().parent
 	pvara.py -a               also the session bookkeeping (ACK, NACK, REQ, IDLE, ...), blind and dropped lines
 ==================================================================================================================================================='''
 
+EXAMPLES = """examples:
+  pvara.py                     vara.log next to pvara.py: whole file, then follow it (Ctrl-C to stop)
+  pvara.py -e                  only new lines (watch while shack's VARA decoder runs)
+  pvara.py -q old.log          an old log: start to end, then quit
+  pvara.py -q > vara.txt       save the readable version (no colors when not a terminal)
+  pvara.py -q | less           page through it (piped: no colors)
+  pvara.py -a -q               everything, incl. ACK/NACK/REQ/IDLE and blind guesses
+  pvara.py -g FM05ab -q        distances from another grid
+"""
+
 GRID = re.compile(r'[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2})?')
 
 def grid_ll(g):		# 4/6-char Maidenhead -> middle lat, lon
@@ -370,8 +380,8 @@ if __name__ == '__main__':
 			utils.set_vscode_editor_font_size(15)
 			# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 			# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-			ap = argparse.ArgumentParser(description='vara.log, one line per transmission')
-			ap.add_argument('log', nargs='?', default=str(HERE / 'vara.log'))
+			ap = argparse.ArgumentParser(description='vara.log, one line per transmission', epilog=EXAMPLES, formatter_class=argparse.RawDescriptionHelpFormatter)
+			ap.add_argument('log', nargs='?', default=str(HERE / 'vara.log'), help='default: vara.log next to pvara.py')
 			ap.add_argument('-e', '--end', action='store_true', help='start at the end: only new lines')
 			ap.add_argument('-q', '--quit', action='store_true', help="don't follow: quit at the end of the file")
 			ap.add_argument('-a', '--all', action='store_true', help='also ACK/NACK/REQ/IDLE, blind, dropped, summary lines')
@@ -379,8 +389,8 @@ if __name__ == '__main__':
 			ap.add_argument('--plain', action='store_true', help='no colors')
 			a = ap.parse_args()
 		else:
-			ap = argparse.ArgumentParser(description='vara.log, one line per transmission')
-			ap.add_argument('log', nargs='?', default=str(HERE / 'vara.log'))
+			ap = argparse.ArgumentParser(description='vara.log, one line per transmission', epilog=EXAMPLES, formatter_class=argparse.RawDescriptionHelpFormatter)
+			ap.add_argument('log', nargs='?', default=str(HERE / 'vara.log'), help='default: vara.log next to pvara.py')
 			ap.add_argument('-e', '--end', action='store_true', help='start at the end: only new lines')
 			ap.add_argument('-q', '--quit', action='store_true', help="don't follow: quit at the end of the file")
 			ap.add_argument('-a', '--all', action='store_true', help='also ACK/NACK/REQ/IDLE, blind, dropped, summary lines')
