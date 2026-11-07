@@ -867,12 +867,15 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 		self.drop = ()		# line starts not to show at all
 		self.seen = None		# seen(line): every decoded line, before it's shown (VARA: callsigns for calls.txt)
 		self.gain = 1.0		# on the audio it gets
+		self.clock = kind == 'VARA'		# xara-monitor's times = its start + samples/48000: they fall behind when audio is lost (or the card runs slow)
+		self.fed = 0		# samples written to it
 		self.p = QProcess()
 		self.p.readyReadStandardOutput.connect(self.out)
 		self.p.readyReadStandardError.connect(self.err)
 		self.p.finished.connect(self.ended)
 		self.p.errorOccurred.connect(lambda e: e == QProcess.ProcessError.FailedToStart and self.gone(f"couldn't run {path}: {self.p.errorString()}"))
 		self.p.start(path, args)
+		self.t0 = time.time()		# ~ xara-monitor's own start reading
 		return
 	# __init__
 
@@ -889,11 +892,31 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 		self.tu(x)
 		if self.p.state() == QProcess.ProcessState.Running:
 			self.p.write((np.clip(x * self.gain, -1, 1) * 32767).astype('<i2').tobytes())
+			self.fed += len(x)
 		return '', False
 	# __call__
 
 	def info(self):
 		return ''
+
+	'''-------------------------------------------------------------------
+		VARA: lag() = seconds xara-monitor's clock is behind (audio it never got); fix_time() moves its 'HH:MM:SS.d' line starts up by that
+	-------------------------------------------------------------------'''
+
+	def lag(self):
+		return time.time() - self.t0 - self.fed / decode.FS
+
+	STAMP = re.compile(r'^(\s*)(\d\d):(\d\d):(\d\d)\.(\d)')
+
+	def fix_time(self, line):
+		m = self.STAMP.match(line)
+		if not m:
+			return line
+		t = ((int(m[2]) * 60 + int(m[3])) * 60 + int(m[4])) * 10 + int(m[5]) + round(self.lag() * 10)		# tenths of a second
+		h, t = divmod(t % 864000, 36000)
+		mi, t = divmod(t, 600)
+		return f'{m[1]}{h:02d}:{mi:02d}:{t // 10:02d}.{t % 10}' + line[m.end():]
+	# fix_time
 
 	def tune(self, f):		# the program finds the signal itself
 		return
@@ -913,6 +936,8 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 			if self.hush or line.startswith(self.CHATTER) or not line.strip():
 				log.info(f'{self.name}: {line}') if line.strip() else None
 			else:
+				if self.clock:
+					line = self.fix_time(line)
 				if self.seen:
 					self.seen(line)
 				self.add(line + '\n')			# <<<<<<<<<< decoder output
@@ -1708,7 +1733,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		elif self.kind == 'Scope':
 			t = 'spectrum only'
 		elif self.kind == 'VARA':
-			t = f'{self.hf} Hz   xara-monitor listening'
+			lag = self.dec.lag()
+			t = f'{self.hf} Hz   xara-monitor listening' + (f'   its clock {lag:.0f} s behind (lost audio), times corrected' if lag >= 1 else '')
 		elif self.kind == 'Packet':
 			t = f'{self.pk} baud   direwolf listening'
 		elif self.kind in self.WSJT or self.kind == 'ARDOP':
