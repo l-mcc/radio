@@ -8,6 +8,7 @@
 CALL=N7RTS
 GRID=EM85RP
 BW=2300
+LEAD=150		# ms PTT is held before the audio starts: CAT keying through rigctld + the radio's T/R relay
 DRIVE=-11		# xara TX drive, dB: FTdx10 at 25 W, RPORT GAIN 5 -> 18.7 W with ALC 0 on TUNE (2026-11-07)
 CAT=/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_016AE87B-if00-port0
 CARD=plughw:CARD=CODEC
@@ -48,8 +49,8 @@ wait_for 4532 $RPID || { echo "rigctld didn't start: see rigctld.log"; exit 1; }
 echo "rigctld: radio on $(printf 'f\n' | nc -q 1 127.0.0.1 4532) Hz"
 
 if [ "$1" = tx ]; then
-	AUDIO="--playback $CARD --radio --ptt rigctld:127.0.0.1:4532 --drive-db $DRIVE"
-	echo "xara: TRANSMIT enabled, drive $DRIVE dB"
+	AUDIO="--playback $CARD --radio --ptt rigctld:127.0.0.1:4532 --drive-db $DRIVE --ptt-lead-ms $LEAD"
+	echo "xara: TRANSMIT enabled, drive $DRIVE dB, PTT lead $LEAD ms"
 else
 	AUDIO="--playback null"
 	echo "xara: listen only"
