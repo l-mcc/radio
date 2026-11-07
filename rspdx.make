@@ -1,13 +1,14 @@
 CXX = g++
 MODE ?= O3
 PREFIX ?= /usr/local
+SHARE = $(PREFIX)/share/rspdx
 CXXFLAGS = -std=c++17 -Wall -Wextra -pthread -march=native -$(MODE)
 LDFLAGS = -L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,--disable-new-dtags
 LDLIBS = -lsdrplay_api -lliquid -lrnnoise -lpulse-simple -lpulse -lsqlite3
 OBJS = rsp.o control.o audio.o waterfall.o demod.o
 
 rspdx: rspdx.cpp demod.h $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ rspdx.cpp $(OBJS) $(LDFLAGS) $(LDLIBS)
+	$(CXX) $(CXXFLAGS) -DSHARE_DIR='"$(SHARE)"' -o $@ rspdx.cpp $(OBJS) $(LDFLAGS) $(LDLIBS)
 
 rsp.o: rsp.cpp rsp.h
 	$(CXX) $(CXXFLAGS) -c rsp.cpp -o rsp.o
@@ -30,7 +31,8 @@ clean:
 
 install: rspdx	# sudo make -f rspdx.make install
 	install -D -m 755 rspdx $(DESTDIR)$(PREFIX)/bin/rspdx
+	install -D -m 644 -t $(DESTDIR)$(SHARE) index.html app.js	# waterfall page, used when rspdx runs outside a checkout
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/rspdx
-
+	rm -rf $(DESTDIR)$(SHARE)

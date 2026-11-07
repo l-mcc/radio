@@ -900,6 +900,7 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 
 	'''-------------------------------------------------------------------
 		stdout: decoded lines (start-up and exit chatter to shack.log); stderr: to shack.log
+		eg, vara decode writes to vara.log
 	-------------------------------------------------------------------'''
 
 	def out(self):
@@ -914,7 +915,7 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 			else:
 				if self.seen:
 					self.seen(line)
-				self.add(line + '\n')
+				self.add(line + '\n')			# <<<<<<<<<< decoder output
 		return
 	# out
 
@@ -1749,7 +1750,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		return '45.45' if b == 1000 / 22 else f'{b:g}'
 
 	'''-------------------------------------------------------------------
-		text at the end; follows it only if already at the bottom, so reading back isn't yanked away
+		text at the end; follows it only if already at the bottom,
+		so reading back isn't yanked away
 	-------------------------------------------------------------------'''
 
 	def add(self, txt):

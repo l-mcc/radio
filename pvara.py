@@ -5,6 +5,7 @@ import argparse, json, math, re, signal, sys, time
 from pathlib import Path
 
 import consts
+import utils
 
 HERE = Path(__file__).resolve().parent
 
@@ -83,6 +84,7 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 		self.link = None		# (caller, answerer) from the last HEADER
 		self.last = None		# (seconds of day, solo) of the last line printed; None = nothing to separate from
 		self.cut = False		# next line starts a new conversation
+		self.flag = False		# flag to indicate start of a new conversation
 		return
 	# __init__
 
@@ -295,13 +297,16 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 		beacons and CQs stand alone; END, other calls or GAP s of silence end a session
 	-------------------------------------------------------------------'''
 
+
 	def space(self, t, solo):
+		self.flag = False
 		now = self.secs(t)
 		if self.last:
 			was, alone = self.last
 			d = (now - was) % 86400
-			if self.cut or solo or alone or min(d, 86400 - d) > self.GAP:
-				self.out('')
+			if self.cut or solo or alone or min(d, 86400 - d) > self.GAP:			# gap is 30 seconds
+				# self.out('')
+				self.flag = True
 		self.last = (now, solo)
 		self.cut = False
 		return
@@ -309,11 +314,19 @@ class Parser:		# xara-monitor lines in, readable lines out (self.out)
 
 	'''-------------------------------------------------------------------
 		one output line: time, kind, who/what, more, S/N
+		sn is snr the we saw.
 	-------------------------------------------------------------------'''
 
 	def say(self, t, kind, what, more='', sn=None, solo=False):
 		self.space(t, solo)
-		s = f'{t}  {kind:<8} {what:<26} {more}'.rstrip()
+		if self.flag:
+			color = consts.KCYN
+			s = f'{t}  {kind:<8} {what:<26} {more}'.rstrip()
+		else:
+			color = consts.KWHT
+			s = f'{t}  {kind:<8} {what:<26} {more}'.rstrip()
+
+		s = f'{color}{s}{consts.COLOR_RESET}'
 		if sn:
 			s = f'{s:<72} SN {sn}'
 		if self.color and kind in self.COLORS:

@@ -106,6 +106,14 @@ double thread_cpu_seconds() {
 	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
 	return ts.tv_sec + ts.tv_nsec * 1e-9;
 }
+
+#ifndef SHARE_DIR
+#define SHARE_DIR "/usr/local/share/rspdx"		// rspdx.make sets it from PREFIX
+#endif
+
+std::string page_dir() {		// waterfall page files: the current directory if it has them (a radio checkout), else the installed copy
+	return access("index.html", R_OK) == 0 ? "." : SHARE_DIR;
+}
 }
 
 volatile std::sig_atomic_t running = 1;
@@ -247,7 +255,7 @@ int main(int argc, char** argv) {
 			fflush(stdout);
 			last_out = now;
 		}
-		if (wf_on != bool(wf)) wf = wf_on ? std::make_unique<Waterfall>(demod->zooms) : nullptr;
+		if (wf_on != bool(wf)) wf = wf_on ? std::make_unique<Waterfall>(demod->zooms, 8700, page_dir()) : nullptr;
 		if (wf) wf->poll(control);		// page commands, retunes
 		if (now - last_meter >= std::chrono::milliseconds(250)) {
 			if (headless && meter_count) {		// ADC (broadband) and signal (passband) in dBFS, blanker pulses/s
