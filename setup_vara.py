@@ -272,7 +272,9 @@ if __name__ == '__main__':
 			m.add_argument('--fm', action='store_true', help='FM-D wherever the dial is (default: by the dial, FM-D from 144 MHz up)')
 			m.add_argument('--usb', action='store_true', help='USB-D wherever the dial is')
 			ap.add_argument('-n', '--dry-run', action='store_true', help='show only, change nothing')
-			a = ap.parse_args(['ic705', '-n'])
+			if len(sys.argv) == 1:		# VS Code's Run passes nothing: pretend these were typed
+				sys.argv += ['ftdx10', '-n']
+			a = ap.parse_args()
 		else:
 			ap = argparse.ArgumentParser(description='set a radio up for VARA (xara)')
 			ap.add_argument('radio', choices=RADIOS)
