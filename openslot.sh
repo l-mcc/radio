@@ -5,6 +5,7 @@
 #	openslot.sh ic705 tx	which radio: ftdx10 or ic705; only needed when both are on
 # logs: rigctld.log, xara.log next to this script (tail -f xara.log to watch the modem)
 # shack must be closed: rigctld needs the radio's CAT port, xara its USB audio
+# OpenSlot's Tune window drive (dB) overrides DRIVE below: set it there too when switching radios (FTdx10 -11, IC-705 -18)
 
 CALL=N7RTS
 GRID=EM85RP
@@ -22,7 +23,7 @@ radio() {		# per radio: CAT port (by-id pattern), rigctld options, xara TX drive
 		DRIVE=-11;;		# 25 W, RPORT GAIN 5 -> 18.7 W with ALC 0 on TUNE (2026-11-07)
 	ic705)	PORT='*IC-705*if00'
 		RIG='-m 3085 -s 115200 -C dtr_state=OFF,rts_state=OFF'		# keys over CI-V; DTR/RTS low
-		DRIVE=-11;;		# not measured yet: watch the 705's ALC meter on TUNE
+		DRIVE=-18;;		# power 50 %, USB MOD Level 50 % -> 3.65 W, ALC 0 on TUNE (-17: 4.8 W ALC 0.46) (2026-11-08)
 	*)	return 1;;
 	esac
 }
