@@ -10,9 +10,9 @@ import cat, civ, consts
 '''===================================================================================================================================================
 	setup_vara.py: puts a radio's menu settings in place for VARA (xara) over its USB audio, via its own CAT / CI-V port
 	setup_vara.py ftdx10          MODE PSK/DATA menu items (DATA MOD SOURCE REAR, REAR SELECT USB, ...) + DATA-U
-	setup_vara.py ic705           DATA MOD = USB, USB SEND off (xara keys over CI-V) + USB-D
-	setup_vara.py ic705 --fm      the same with FM-D (VARA FM on 2 m)
-	setup_vara.py x6200           USB-D only (its menu isn't reachable over CI-V)
+	setup_vara.py ic705           DATA MOD = USB, USB SEND off (xara keys over CI-V) + mode by the dial: FM-D from 144 MHz up (VARA FM), USB-D below (VARA HF)
+	setup_vara.py ic705 --fm      FM-D wherever the dial is (--usb: USB-D)
+	setup_vara.py x6200           mode only (its menu isn't reachable over CI-V)
 	-n                            show what's there and what would change, change nothing
 	each item: what the radio has now -> what VARA wants, read back after setting
 	the port must be free: close shack, openslot.sh / rigctld first
@@ -50,12 +50,13 @@ RADIOS = {		# kind: which protocol; name: key in cat.RIGS / civ.RIGS
 	'ftdx10': dict(kind='cat', name='FTdx10', items=FTDX10,
 		note='TX drive: xara --drive-db (openslot.sh DRIVE) and OpenSlot\'s own Tune window level; keep ALC at 0. RF power: FUNC > RF POWER.'),
 	'ic705': dict(kind='civ', name='IC-705', items=IC705,
-		note='USB MOD Level and xara --drive-db set the TX drive. 2 m: --fm, then xara --fm narrow.'),
+		note='USB MOD Level and xara --drive-db set the TX drive. FM-D: run xara --fm narrow (or wide), USB-D: xara --hf.'),
 	'x6200': dict(kind='civ', name='Xiegu x6200', items=(),
 		note='Audio input source and levels: the radio\'s own menu (not over CI-V).'),
 }
 
 ICOM_MODES = {'USB-D': 0x01, 'FM-D': 0x05}		# 06 mm; the data flag goes separately (1A 06)
+FM_FROM = 144		# MHz: VARA FM from 2 m up, VARA HF below
 ICOM_NAMES = {0x00: 'LSB', 0x01: 'USB', 0x02: 'AM', 0x03: 'CW', 0x04: 'RTTY', 0x05: 'FM', 0x06: 'WFM', 0x07: 'CW-R', 0x08: 'RTTY-R', 0x17: 'DV'}
 
 '''===================================================================================================================================================
@@ -188,6 +189,10 @@ class Icom:
 		return ICOM_NAMES.get(m[0], f'{m[0]:02x}') + ('-D' if d and d[0] else '')
 	# name
 
+	def mhz(self):		# 03: operating frequency, 5 bytes little-endian BCD Hz; None if no answer
+		f = self.ask(b'\x03', b'\x03')
+		return civ.bcd(f) / 1e6 if f and len(f) == 5 else None
+
 	def mode(self, want, dry):
 		was = self.name()
 		if dry or was == want:
@@ -263,20 +268,24 @@ if __name__ == '__main__':
 			# <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 			ap = argparse.ArgumentParser(description='set a radio up for VARA (xara)')
 			ap.add_argument('radio', choices=RADIOS)
-			ap.add_argument('--fm', action='store_true', help='FM-D instead of USB-D (IC-705, VARA FM on 2 m)')
+			m = ap.add_mutually_exclusive_group()
+			m.add_argument('--fm', action='store_true', help='FM-D wherever the dial is (default: by the dial, FM-D from 144 MHz up)')
+			m.add_argument('--usb', action='store_true', help='USB-D wherever the dial is')
 			ap.add_argument('-n', '--dry-run', action='store_true', help='show only, change nothing')
 			a = ap.parse_args(['ic705', '-n'])
 		else:
 			ap = argparse.ArgumentParser(description='set a radio up for VARA (xara)')
 			ap.add_argument('radio', choices=RADIOS)
-			ap.add_argument('--fm', action='store_true', help='FM-D instead of USB-D (IC-705, VARA FM on 2 m)')
+			m = ap.add_mutually_exclusive_group()
+			m.add_argument('--fm', action='store_true', help='FM-D wherever the dial is (default: by the dial, FM-D from 144 MHz up)')
+			m.add_argument('--usb', action='store_true', help='USB-D wherever the dial is')
 			ap.add_argument('-n', '--dry-run', action='store_true', help='show only, change nothing')
 			a = ap.parse_args()
 		# if vscode
 
 		rd = RADIOS[a.radio]
 		if a.fm and a.radio != 'ic705':
-			sys.exit('--fm is for the IC-705 only')
+			sys.exit('--fm is for the IC-705 only (the others have no 2 m)')
 		mod = cat if rd['kind'] == 'cat' else civ
 		dev = mod.find_dev(rd['name'])
 		if not dev:
@@ -286,8 +295,14 @@ if __name__ == '__main__':
 			rig = Yaesu(dev, baud) if rd['kind'] == 'cat' else Icom(dev, baud)
 		except serial.SerialException as e:
 			sys.exit(f'{dev}: {e}\nclose shack, openslot.sh / rigctld first')
-		print(f"{rd['name']}  {dev}{'  (dry run)' if a.dry_run else ''}")
-		bad = run(rig, rd['items'], 'FM-D' if a.fm else 'USB-D', a.dry_run, sys.stdout.isatty())
+		want, where = 'USB-D', ''
+		if rd['kind'] == 'civ':
+			mhz = rig.mhz()
+			where = f'  {mhz:.4f} MHz' if mhz else '  (frequency not answered)'
+			if a.fm or (not a.usb and mhz and mhz >= FM_FROM):
+				want = 'FM-D'
+		print(f"{rd['name']}  {dev}{where}{'  (dry run)' if a.dry_run else ''}")
+		bad = run(rig, rd['items'], want, a.dry_run, sys.stdout.isatty())
 		rig.close()
 		print(f"\n{rd['note']}")
 		if bad:
