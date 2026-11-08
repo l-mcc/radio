@@ -11,7 +11,7 @@ import cat, civ, consts
 	setup_vara.py: puts a radio's menu settings in place for VARA (xara) over its USB audio, via its own CAT / CI-V port
 	setup_vara.py ftdx10          MODE PSK/DATA menu items (DATA MOD SOURCE REAR, REAR SELECT USB, ...) + DATA-U
 	setup_vara.py ic705           DATA MOD = USB, USB SEND off (xara keys over CI-V) + mode by the dial: FM-D from 144 MHz up (VARA FM), USB-D below (VARA HF)
-	setup_vara.py ic705 --fm      FM-D wherever the dial is (--usb: USB-D)
+	setup_vara.py ic705 --fm      FM-D wherever the dial is (--hf: USB-D)
 	setup_vara.py x6200           mode only (its menu isn't reachable over CI-V)
 	-n                            show what's there and what would change, change nothing
 	each item: what the radio has now -> what VARA wants, read back after setting
@@ -269,8 +269,8 @@ if __name__ == '__main__':
 			ap = argparse.ArgumentParser(description='set a radio up for VARA (xara)')
 			ap.add_argument('radio', choices=RADIOS)
 			m = ap.add_mutually_exclusive_group()
-			m.add_argument('--fm', action='store_true', help='FM-D wherever the dial is (default: by the dial, FM-D from 144 MHz up)')
-			m.add_argument('--usb', action='store_true', help='USB-D wherever the dial is')
+			m.add_argument('--fm', action='store_true', help='FM-D (VARA FM) wherever the dial is (default: by the dial, FM-D from 144 MHz up)')
+			m.add_argument('--hf', action='store_true', help='USB-D (VARA HF) wherever the dial is')
 			ap.add_argument('-n', '--dry-run', action='store_true', help='show only, change nothing')
 			if len(sys.argv) == 1:		# VS Code's Run passes nothing: pretend these were typed
 				sys.argv += ['ftdx10', '-n']
@@ -279,8 +279,8 @@ if __name__ == '__main__':
 			ap = argparse.ArgumentParser(description='set a radio up for VARA (xara)')
 			ap.add_argument('radio', choices=RADIOS)
 			m = ap.add_mutually_exclusive_group()
-			m.add_argument('--fm', action='store_true', help='FM-D wherever the dial is (default: by the dial, FM-D from 144 MHz up)')
-			m.add_argument('--usb', action='store_true', help='USB-D wherever the dial is')
+			m.add_argument('--fm', action='store_true', help='FM-D (VARA FM) wherever the dial is (default: by the dial, FM-D from 144 MHz up)')
+			m.add_argument('--hf', action='store_true', help='USB-D (VARA HF) wherever the dial is')
 			ap.add_argument('-n', '--dry-run', action='store_true', help='show only, change nothing')
 			a = ap.parse_args()
 		# if vscode
@@ -301,7 +301,7 @@ if __name__ == '__main__':
 		if rd['kind'] == 'civ':
 			mhz = rig.mhz()
 			where = f'  {mhz:.4f} MHz' if mhz else '  (frequency not answered)'
-			if a.fm or (not a.usb and mhz and mhz >= FM_FROM):
+			if a.fm or (not a.hf and mhz and mhz >= FM_FROM):
 				want = 'FM-D'
 		print(f"{rd['name']}  {dev}{where}{'  (dry run)' if a.dry_run else ''}")
 		bad = run(rig, rd['items'], want, a.dry_run, sys.stdout.isatty())
