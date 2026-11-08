@@ -9,7 +9,7 @@ import cat, civ, consts
 
 '''===================================================================================================================================================
 	setup_vara.py: puts a radio's menu settings in place for VARA (xara) over its USB audio, via its own CAT / CI-V port
-	setup_vara.py ftdx10          MODE PSK/DATA menu items (DATA MOD SOURCE REAR, REAR SELECT USB, ...) + DATA-U
+	setup_vara.py ftdx10          MODE PSK/DATA menu items (DATA MOD SOURCE REAR, REAR SELECT USB, ..., RPTT SELECT DAKY) + DATA-U
 	setup_vara.py ic705           DATA MOD = USB, USB SEND off (xara keys over CI-V) + mode by the dial: FM-D from 144 MHz up (VARA FM), USB-D below (VARA HF)
 	setup_vara.py ic705 --fm      FM-D wherever the dial is (--hf: USB-D)
 	setup_vara.py x6200           mode only (its menu isn't reachable over CI-V)
@@ -36,7 +36,7 @@ FTDX10 = (		# (menu item, EX number, digits, wanted (None = only shown), value -
 	('HCUT FREQ', '010411', 2, 0, cut(700)),
 	('DATA SHIFT (SSB)', '010408', 4, 1500, num(' Hz')),
 	('DATA OUT LEVEL', '010413', 3, None, num()),
-	('RPTT SELECT', '010418', 1, None, pick('DAKY', 'RTS', 'DTR')),
+	('RPTT SELECT', '010418', 1, 0, pick('DAKY', 'RTS', 'DTR')),		# DAKY: only the rear DATA jack keys; RTS/DTR would let anything opening ttyUSB1 key it (we key over CAT)
 	('HF MAX POWER', '030401', 3, None, num(' W')),
 )
 
