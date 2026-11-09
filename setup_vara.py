@@ -285,6 +285,11 @@ if __name__ == '__main__':
 			a = ap.parse_args()
 		# if vscode
 
+		print()
+		print(f'sys.argv: {sys.argv[1:]}')
+		print(f'a:        {a}')
+		print()
+
 		rd = RADIOS[a.radio]
 		if a.fm and a.radio != 'ic705':
 			sys.exit('--fm is for the IC-705 only (the others have no 2 m)')
