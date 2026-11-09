@@ -5,7 +5,7 @@
 #	openslot.sh ic705 tx	which radio: ftdx10 or ic705; only needed when both are on
 # logs: rigctld.log, xara.log next to this script (tail -f xara.log to watch the modem)
 # shack must be closed: rigctld needs the radio's CAT port, xara its USB audio
-# OpenSlot's Tune window drive (dB) overrides DRIVE below: set it there too when switching radios (FTdx10 -11, IC-705 -16)
+# OpenSlot's Tune window drive (dB) overrides DRIVE below: keep it at -15 for both radios; each radio's level is set by PCM (the card's mixer)
 
 CALL=N7RTS
 GRID=EM85RP
@@ -20,10 +20,12 @@ radio() {		# per radio: CAT port (by-id pattern), rigctld options, xara TX drive
 	case $1 in
 	ftdx10)	PORT='*CP2105_Dual_USB_to_UART*if00-port0'
 		RIG='-m 1042 -s 38400 -C serial_handshake=None,rts_state=ON'		# the radio answers only with RTS high
-		DRIVE=-11;;		# 25 W, RPORT GAIN 5 -> 18.7 W with ALC 0 on TUNE (2026-11-07)
+		DRIVE=-15
+		PCM=51;;		# RF POWER 10 W, RPORT GAIN 5, drive -15: ALC 0, 6.5 W on the CN-501H (52: ALC 0.12; 2026-11-09)
 	ic705)	PORT='*IC-705*if00'
 		RIG='-m 3085 -s 115200 -C dtr_state=OFF,rts_state=OFF'		# keys over CI-V; DTR/RTS low
-		DRIVE=-16;;		# power 100 %, USB MOD Level 50 % -> 10.1 W, ALC 0.008 on TUNE (-14: ALC 0.17); at 50 % power: -18 (2026-11-08)
+		DRIVE=-15
+		PCM=41;;		# NOT CHECKED: 41 is a guess at 2026-11-08's level (drive -16 at 100 % power: 10.1 W, ALC 0.008; -15: ALC 0.09)
 	*)	return 1;;
 	esac
 }
@@ -84,6 +86,8 @@ CAT=$(ls /dev/serial/by-id/$PORT 2>/dev/null | head -1)
 [ -n "$CAT" ] || { echo "$NAME not found: on and plugged in?"; exit 1; }
 CARD=$(card_of "$CAT") || { echo "$NAME: no USB sound card found next to $CAT"; exit 1; }
 echo "$NAME: CAT $CAT, audio $CARD"
+amixer -q -c ${CARD#plughw:} sset PCM $PCM || { echo "couldn't set PCM on $CARD"; exit 1; }		# the radios' cards share one saved mixer state (both are named CODEC)
+echo "$NAME: PCM $PCM"
 
 for p in 4532 8300; do
 	if up $p; then
