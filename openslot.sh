@@ -3,6 +3,7 @@
 #	openslot.sh		listen only: xara can't transmit (plays to ALSA null, no PTT)
 #	openslot.sh tx		transmit: xara plays into the radio and keys it through rigctld
 #	openslot.sh ic705 tx	which radio: ftdx10 or ic705; only needed when both are on
+#	openslot.sh tx pat	no OpenSlot: rigctld + xara stay up for Pat (pat connect varahf:///CALL?freq=...), Ctrl-C stops them
 # logs: rigctld.log, xara.log next to this script (tail -f xara.log to watch the modem)
 # shack must be closed: rigctld needs the radio's CAT port, xara its USB audio
 # OpenSlot's Tune window drive (dB) overrides DRIVE below: keep it at -15 for both radios; each radio's level is set by PCM (the card's mixer)
@@ -63,12 +64,13 @@ stop() {
 	echo "xara and rigctld stopped"
 }
 
-NAME= TX=
+NAME= TX= PAT=
 for a in "$@"; do
 	case $a in
 	tx) TX=1;;
+	pat) PAT=1;;
 	ftdx10|ic705) NAME=$a;;
-	*) echo "usage: openslot.sh [ftdx10|ic705] [tx]"; exit 1;;
+	*) echo "usage: openslot.sh [ftdx10|ic705] [tx] [pat]"; exit 1;;
 	esac
 done
 if [ -z "$NAME" ]; then		# whichever radio is on
@@ -115,4 +117,9 @@ XPID=$!
 wait_for 8300 $XPID || { echo "xara didn't start: see xara.log"; exit 1; }
 echo "xara: up (tail -f xara.log)"
 
-"$OPENSLOT" --callsign $CALL --locator $GRID
+if [ -n "$PAT" ]; then		# no OpenSlot: Pat gets xara's 8300
+	echo "xara is ready for Pat on 8300 (Ctrl-C here stops xara and rigctld)"
+	wait $XPID
+else
+	"$OPENSLOT" --callsign $CALL --locator $GRID
+fi
