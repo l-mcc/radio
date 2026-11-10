@@ -3,8 +3,8 @@
 #	openslot.sh		listen only: xara can't transmit (plays to ALSA null, no PTT)
 #	openslot.sh tx		transmit: xara plays into the radio and keys it through rigctld
 #	openslot.sh ic705 tx	which radio: ftdx10 or ic705; only needed when both are on
-#	openslot.sh tx pat	no OpenSlot: rigctld + xara stay up for Pat (pat connect varahf:///CALL?freq=...), Ctrl-C stops them
-# logs: rigctld.log, xara.log next to this script (tail -f xara.log to watch the modem)
+#	openslot.sh tx pat	Pat instead of OpenSlot: starts pat http and opens its mail page (compose, Connect); Ctrl-C stops everything
+# logs: rigctld.log, xara.log, pat.log next to this script (tail -f xara.log to watch the modem)
 # shack must be closed: rigctld needs the radio's CAT port, xara its USB audio
 # OpenSlot's Tune window drive (dB) overrides DRIVE below: keep it at -15 for both radios; each radio's level is set by PCM (the card's mixer)
 
@@ -17,16 +17,20 @@ OPENSLOT=~/installed/builds/OpenSlot/target/release/openslot
 HERE=$(dirname "$(readlink -f "$0")")
 SYS=/sys
 
-radio() {		# per radio: CAT port (by-id pattern), rigctld options, xara TX drive dB
+PATWEB=localhost:8080		# pat http's address
+
+radio() {		# per radio: CAT port (by-id pattern), rigctld options, xara TX drive dB, card PCM (raw mixer steps), RF power (rigctld 0..1, empty = leave)
 	case $1 in
 	ftdx10)	PORT='*CP2105_Dual_USB_to_UART*if00-port0'
 		RIG='-m 1042 -s 38400 -C serial_handshake=None,rts_state=ON'		# the radio answers only with RTS high
 		DRIVE=-15
-		PCM=51;;		# RF POWER 10 W, RPORT GAIN 5, drive -15: ALC 0, 6.5 W on the CN-501H (52: ALC 0.12; 2026-11-09)
+		PWR=
+		PCM=51;;		# card scale 0-64. RF POWER 10 W, RPORT GAIN 5, drive -15: ALC 0, 6.5 W on the CN-501H (52: ALC 0.12; 2026-11-09)
 	ic705)	PORT='*IC-705*if00'
 		RIG='-m 3085 -s 115200 -C dtr_state=OFF,rts_state=OFF'		# keys over CI-V; DTR/RTS low
 		DRIVE=-15
-		PCM=41;;		# NOT CHECKED: 41 is a guess at 2026-11-08's level (drive -16 at 100 % power: 10.1 W, ALC 0.008; -15: ALC 0.09)
+		PWR=1.0
+		PCM=103;;		# card scale 0-128 (1 dB a step). 100 % power, drive -15: 9.8 W, ALC 0.08 (105: ALC 0.16; 115: 0.5-0.7; 127: 0.98; 2026-11-10)
 	*)	return 1;;
 	esac
 }
@@ -46,6 +50,8 @@ card_of() {		# plughw:N of the sound card in the same radio as serial port $1: s
 	return 1
 }
 
+rig() { printf '%s\n' "$1" | nc -q 1 127.0.0.1 4532; }		# one rigctld command, its answer
+
 up() { nc -z 127.0.0.1 $1 2>/dev/null; }		# something listening on port $1?
 
 wait_for() {		# port $1 opens while process $2 lives, up to 10 s
@@ -58,10 +64,11 @@ wait_for() {		# port $1 opens while process $2 lives, up to 10 s
 }
 
 stop() {
+	[ -n "$WPID" ] && kill $WPID 2>/dev/null
 	[ -n "$XPID" ] && kill $XPID 2>/dev/null
 	[ -n "$RPID" ] && kill $RPID 2>/dev/null
 	wait 2>/dev/null
-	echo "xara and rigctld stopped"
+	echo "${WPID:+pat, }xara and rigctld stopped"
 }
 
 NAME= TX= PAT=
@@ -91,9 +98,9 @@ echo "$NAME: CAT $CAT, audio $CARD"
 amixer -q -c ${CARD#plughw:} sset PCM $PCM || { echo "couldn't set PCM on $CARD"; exit 1; }		# the radios' cards share one saved mixer state (both are named CODEC)
 echo "$NAME: PCM $PCM"
 
-for p in 4532 8300; do
+for p in 4532 8300 ${PAT:+${PATWEB##*:}}; do
 	if up $p; then
-		echo "port $p is already in use (shack? an old rigctld or xara?): close it first"
+		echo "port $p is already in use (shack? an old rigctld, xara or pat?): close it first"
 		exit 1
 	fi
 done
@@ -103,7 +110,10 @@ trap 'exit 1' INT TERM
 rigctld $RIG -r $CAT -t 4532 > "$HERE/rigctld.log" 2>&1 &
 RPID=$!
 wait_for 4532 $RPID || { echo "rigctld didn't start: see rigctld.log"; exit 1; }
-echo "rigctld: radio on $(printf 'f\n' | nc -q 1 127.0.0.1 4532) Hz"
+rig 'V VFOA' > /dev/null
+[ "$(rig m | head -1)" = PKTUSB ] || rig 'M PKTUSB 0' > /dev/null		# DATA-U (USB-D on the 705): Pat and OpenSlot set only the frequency
+[ -n "$PWR" ] && rig "L RFPOWER $PWR" > /dev/null
+echo "rigctld: VFO A, $(rig f) Hz, $(rig m | head -1), RF power $(rig 'l RFPOWER')"
 
 if [ -n "$TX" ]; then
 	AUDIO="--playback $CARD --radio --ptt rigctld:127.0.0.1:4532 --drive-db $DRIVE --ptt-lead-ms $LEAD"
@@ -117,9 +127,13 @@ XPID=$!
 wait_for 8300 $XPID || { echo "xara didn't start: see xara.log"; exit 1; }
 echo "xara: up (tail -f xara.log)"
 
-if [ -n "$PAT" ]; then		# no OpenSlot: Pat gets xara's 8300
-	echo "xara is ready for Pat on 8300 (Ctrl-C here stops xara and rigctld)"
-	wait $XPID
+if [ -n "$PAT" ]; then		# Pat's web page instead of OpenSlot; Pat gets xara's 8300
+	pat http -a $PATWEB > "$HERE/pat.log" 2>&1 &
+	WPID=$!
+	wait_for ${PATWEB##*:} $WPID || { echo "pat http didn't start: see pat.log"; exit 1; }
+	echo "pat: mail page http://$PATWEB (Ctrl-C here stops pat, xara and rigctld)"
+	xdg-open http://$PATWEB > /dev/null 2>&1 &
+	wait $WPID
 else
 	"$OPENSLOT" --callsign $CALL --locator $GRID
 fi
