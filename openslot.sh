@@ -98,14 +98,18 @@ echo "$NAME: CAT $CAT, audio $CARD"
 amixer -q -c ${CARD#plughw:} sset PCM $PCM || { echo "couldn't set PCM on $CARD"; exit 1; }		# the radios' cards share one saved mixer state (both are named CODEC)
 echo "$NAME: PCM $PCM"
 
+for n in rigctld xara 'pat http'; do		# left over from an earlier run (its terminal closed, or still open in another one)
+	pkill -f "^([^ ]*/)?$n( |\$)" && echo "stopped an old $n"
+done
+for i in $(seq 30); do up 4532 || up 8300 || break; sleep 0.1; done
 for p in 4532 8300 ${PAT:+${PATWEB##*:}}; do
 	if up $p; then
-		echo "port $p is already in use (shack? an old rigctld, xara or pat?): close it first"
+		echo "port $p is in use by something else (shack with the IC-705 or FTdx10 open?): close it first"
 		exit 1
 	fi
 done
 trap stop EXIT
-trap 'exit 1' INT TERM
+trap 'exit 1' INT TERM HUP		# HUP: the terminal window was closed
 
 rigctld $RIG -r $CAT -t 4532 > "$HERE/rigctld.log" 2>&1 &
 RPID=$!
