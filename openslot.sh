@@ -115,9 +115,11 @@ rigctld $RIG -r $CAT -t 4532 > "$HERE/rigctld.log" 2>&1 &
 RPID=$!
 wait_for 4532 $RPID || { echo "rigctld didn't start: see rigctld.log"; exit 1; }
 rig 'V VFOA' > /dev/null
+rig 'S 0 VFOA' > /dev/null		# split OFF: left on (by WSJT-X's rig split), the FTdx10 sent every VARA call on VFO B's frequency, unheard for days (2026-11-10)
 [ "$(rig m | head -1)" = PKTUSB ] || rig 'M PKTUSB 0' > /dev/null		# DATA-U (USB-D on the 705): Pat and OpenSlot set only the frequency
 [ -n "$PWR" ] && rig "L RFPOWER $PWR" > /dev/null
-echo "rigctld: VFO A, $(rig f) Hz, $(rig m | head -1), RF power $(rig 'l RFPOWER')"
+[ "$(rig s | head -1)" = 0 ] || { echo "$NAME is still in SPLIT (transmits on VFO B): turn split off on the radio"; exit 1; }
+echo "rigctld: VFO A, split off, $(rig f) Hz, $(rig m | head -1), RF power $(rig 'l RFPOWER')"
 
 if [ -n "$TX" ]; then
 	AUDIO="--playback $CARD --radio --ptt rigctld:127.0.0.1:4532 --drive-db $DRIVE --ptt-lead-ms $LEAD"
