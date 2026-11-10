@@ -17,7 +17,7 @@ OPENSLOT=~/installed/builds/OpenSlot/target/release/openslot
 HERE=$(dirname "$(readlink -f "$0")")
 SYS=/sys
 
-PATWEB=localhost:8080		# pat http's address
+PATWEB=localhost:8091		# pat http's address (8080 is taken on debbie)
 
 radio() {		# per radio: CAT port (by-id pattern), rigctld options, xara TX drive dB, card PCM (raw mixer steps), RF power (rigctld 0..1, empty = leave)
 	case $1 in
