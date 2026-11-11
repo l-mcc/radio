@@ -50,7 +50,8 @@ def swr(v):
 	return x + (v - a) / (b - a) * (y - x)
 
 RIGS = {		# port: by-id pattern of the CI-V port; audio: ALSA name of its USB sound card (receive audio for shack's decoders); top: MHz; att: 11 xx value for on; agc: 16 12 values; watts: power at 00 and 255 (None = show %); swr: 15 12 meter works; scope: sends its band scope over CI-V (27 00)
-	'IC-705': dict(port='*IC-705*if00', audio='plughw:CARD=CODEC', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None, swr=True, scope=True),
+	'IC-705': dict(port='*IC-705*if00', audio='plughw:CARD=CODEC', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None, swr=True, scope=True,
+		vara=dict(drive=-15, pcm=103, pwr=255)),		# VARA transmit (shack's Modem): xara's drive dB, the card's PCM mixer step (0-128, 1 dB each), RF power 0-255. 100 % power: 9.8 W, ALC 0.08 (105: ALC 0.16; 115: 0.5-0.7; 127: 0.98; 2026-11-10)
 	'Xiegu x6200': dict(port='*1a86_USB_Dual_Serial*if02', audio='plughw:CARD=Device', baud=19200, modes=['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'NBFM'], top=108,		# its if00 is the radio's Linux console, never CI-V
 		att=0x01, agc={'Off': 0, 'Fast': 1, 'Slow': 2, 'Auto': 3}, watts=(1, 8), swr=False, scope=False),		# power below 1 W reads back as 00 FA; 15 12 always 0 (firmware as of 2026-10)
 }

@@ -28,7 +28,8 @@ MAXW = {'030401': 'HF', '030402': '50M', '030404': 'AM'}		# EX menu items: TX GE
 
 RIGS = {		# port: by-id pattern of the CAT port (the CP2105's Enhanced port; if01 is the Standard port, RTS/DTR keying: never opened); audio: ALSA card; top: MHz; agc: GT0 values; watts: PC range
 	'FTdx10': dict(port='*CP2105_Dual_USB_to_UART*if00-port0', audio='plughw:CARD=CODEC', baud=38400, modes=['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'AM-N', 'CW', 'CW-R', 'RTTY', 'RTTY-R', 'NBFM', 'NBFM-D', 'FM-N', 'PSK'], top=75,
-		agc={'Off': 0, 'Fast': 1, 'Mid': 2, 'Slow': 3, 'Auto': 4}, watts=(5, 100)),
+		agc={'Off': 0, 'Fast': 1, 'Mid': 2, 'Slow': 3, 'Auto': 4}, watts=(5, 100),
+		vara=dict(drive=-15, pcm=51, pwr=None)),		# VARA transmit (shack's Modem): xara's drive dB, the card's PCM mixer step (0-64), RF power 0-255 (None = as the radio is set). RF POWER 10 W, RPORT GAIN 5: ALC 0, 6.5 W on the CN-501H (52: ALC 0.12; 2026-11-09)
 }
 
 '''-------------------------------------------------------------------
