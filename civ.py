@@ -384,6 +384,8 @@ def serve_rigctld(rig, port=4532, host='127.0.0.1'):		# the part of rigctld that
 			return '0'		# commands come without a VFO argument
 		if op == 'dump_state':
 			return DUMP
+		if op in ('dump_caps', '1'):		# Pat's "is rigctld there?" (it reads one line)
+			return 'Caps dump for model: 2'
 		if op == 'get_powerstat':
 			return '1'
 		if op == 'get_lock_mode':		# Hamlib 4.5 asks before every set_mode
