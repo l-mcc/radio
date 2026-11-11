@@ -8,7 +8,7 @@ import serial
 from PyQt6.QtCore import pyqtSignal, QEvent, QPointF, QProcess, QProcessEnvironment, QRect, QSize, Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
-	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget)
+	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
 import cat, civ, styles
 try:		# decoders need numpy; without it shack still runs, the Decoder row says why
@@ -59,7 +59,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. Double-click one with Modem on Transmit: Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. Right-click > Stop Pat gives up on a connect. BUSY at the bottom of the window is red while the modem hears a signal on the frequency. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
@@ -2212,7 +2212,8 @@ class Modem:
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
 
-	def __init__(self, card, hf, add, gone, tx=None):
+	def __init__(self, card, hf, add, gone, tx=None, chan=None):		# chan(busy): xara's BUSY ON / BUSY OFF (a signal in the channel), instead of lines in the text
+		self.chan = chan
 		self.add, self.gone, self.last = add, gone, ''		# last: its last line, the reason when it stops by itself
 		self.log = open(HERE / 'xara.log', 'w')
 		self.p = QProcess()
@@ -2249,7 +2250,11 @@ class Modem:
 				self.last = line
 				self.log.write(line + '\n')
 				self.log.flush()
-				self.add(line + '\n')
+				m = self.chan and re.search(r'< BUSY (ON|OFF)$', line)
+				if m:
+					self.chan(m[1] == 'ON')
+				else:
+					self.add(line + '\n')
 		return
 	# out
 
@@ -2424,8 +2429,21 @@ class Shack(QMainWindow):
 		self.bms.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.bms.customContextMenuRequested.connect(self.bm_menu)
 		self.bmlist = []
+		self.tabs = QTabWidget()		# right side: Bookmarks | Gateways
+		self.tabs.setMinimumWidth(320)
+		self.gws = QTableWidget(0, 6, toolTip='Winlink gateways (VARA HF) on the band the radio is on, nearest first; grey: not heard from in 6 hours.  Double-click: Pat connects to it through the modem (Modem on Transmit).  Right-click: download a fresh list, stop Pat')
+		self.gws.setHorizontalHeaderLabels(['Gateway', 'Dial kHz', 'BW', 'Miles', 'Bearing', 'Heard'])
+		self.gws.verticalHeader().hide()
+		self.gws.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+		self.gws.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+		self.gws.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+		self.gws.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+		self.gws.cellDoubleClicked.connect(lambda r, c: self.gw_pick(r))
+		self.gws.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+		self.gws.customContextMenuRequested.connect(self.gw_menu)
+		self.gwlist, self.gwband, self.pat, self.rmsp = [], None, None, None		# rows shown, their band, a running pat connect, a running rms.py
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
-		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.bms)		# RSPdx controls
+		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
 		self.tx = QLabel('RX')
@@ -2462,6 +2480,9 @@ class Shack(QMainWindow):
 		h.addWidget(self.pcm)
 		h.addStretch()
 		self.clients = QLabel()
+		self.busyl = QLabel(' BUSY ', toolTip='The modem hears a signal on the frequency: red while it does')		# there while the modem runs
+		self.busyl.hide()
+		self.statusBar().addPermanentWidget(self.busyl)
 		self.statusBar().addPermanentWidget(self.clients)
 		self.mdm = None		# the running Modem
 		self.modem = QComboBox(toolTip='xara, the VARA modem, on this radio, for Pat and OpenSlot (ports 8100 / 8300). Listen: it can\'t transmit. Transmit: it plays into the radio and keys it. The decoders stop while it runs: it needs the radio\'s sound card')
@@ -2553,7 +2574,10 @@ class Shack(QMainWindow):
 		box.setLayout(g)
 		main = QHBoxLayout()
 		main.addWidget(box, 2)		# decoded lines get the wider share; the bookmarks' Name column gives it up
-		main.addWidget(self.bms, 1)
+		self.tabs.addTab(self.bms, 'Bookmarks')
+		self.tabs.addTab(self.gws, 'Gateways')
+		self.tabs.currentChanged.connect(lambda i: self.tabs.widget(i) is self.gws and self.show_gws())
+		main.addWidget(self.tabs, 1)
 		top = QWidget()
 		top.setLayout(main)
 		self.setCentralWidget(top)
@@ -2610,7 +2634,7 @@ class Shack(QMainWindow):
 		self.scope_for(False)
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.modemrow, *([self.scoperow] if r['scope'] else []), self.save, self.bms,
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.modemrow, *([self.scoperow] if r['scope'] else []), self.save, self.tabs,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))		# nb, nr: the radio's own, on/off
 		self.card = card_of(dev) or r['audio']		# the card in this radio; by name if sysfs doesn't say
 		self.dec.opened(self.card)		# decoders read the radio's USB sound card
@@ -2647,7 +2671,7 @@ class Shack(QMainWindow):
 		self.scope_for(True)
 		self.rig.poll(0)
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.modemrow, self.scoperow, self.save, self.bms,
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.modemrow, self.scoperow, self.save, self.tabs,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))
 		self.card = card_of(dev) or r['audio']		# the card in this radio; by name if sysfs doesn't say
 		self.dec.opened(self.card)
@@ -2851,7 +2875,9 @@ class Shack(QMainWindow):
 			return self.modemst.setText(why)
 		what = f"TRANSMIT, drive {v['drive']} dB, PCM {self.pcm.value()}" if tx else 'listen only'
 		self.dec.add(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC  xara, {what}, {self.dec.hf} Hz, {self.card} ---\n")
-		self.mdm = Modem(self.card, self.dec.hf, self.dec.add, self.modem_gone, tx)
+		self.mdm = Modem(self.card, self.dec.hf, self.dec.add, self.modem_gone, tx, self.set_busy)
+		self.set_busy(False)
+		self.busyl.show()
 		self.show_tx(bool(tx))
 		self.modemst.setText(f"xara {'TRANSMIT enabled' if tx else 'listening'}, {self.card}   (xara.log)")
 		self.modemst.setStyleSheet('color: #c00000; font-weight: bold' if tx else '')
@@ -2913,6 +2939,119 @@ class Shack(QMainWindow):
 		return
 	# set_tune
 
+	def set_busy(self, on):
+		self.busyl.setStyleSheet('color: white; background: red; font-weight: bold' if on else 'color: #b0b0b0')
+		return
+
+	'''-------------------------------------------------------------------
+		Gateways tab: rms.db (made by rms.py) -> the VARA HF gateways on the radio's band, heard-lately ones first, then by miles
+	-------------------------------------------------------------------'''
+
+	def band_of(self, mhz):		# (lo, hi) kHz of the ham band around mhz, None outside
+		return next(((lo, hi) for lo, hi in civ.BANDS if lo <= mhz * 1000 <= hi), None)
+
+	def show_gws(self):
+		self.gwband = self.band_of(self.freq.hz / 1e6) if self.rig else None
+		self.gwlist = []
+		db = HERE / 'rms.db'
+		if self.gwband and db.is_file():
+			try:
+				with sqlite3.connect(f'file:{db}?mode=ro', uri=True) as c:
+					self.gwlist = c.execute("select call, dial_khz, bw, miles, bearing, hours_since, connect from channels where kind = 'VARA HF' and connect != '' and khz between ? and ? "
+						'order by coalesce(hours_since, 99) > 6, miles limit 60', self.gwband).fetchall()
+			except sqlite3.Error as e:
+				self.statusBar().showMessage(f'rms.db: {e}', 8000)
+		elif not db.is_file():
+			self.statusBar().showMessage('No gateway list yet: right-click the Gateways tab > Download a fresh list', 8000)
+		self.gws.setRowCount(len(self.gwlist))
+		for r, (call, khz, bw, miles, brg, since, url) in enumerate(self.gwlist):
+			old = since is None or since > 6
+			for c, x in enumerate((call, f'{khz:.1f}', bw, f'{miles:.0f}', f'{brg:.0f}°', '?' if since is None else f'{since} h')):
+				it = QTableWidgetItem(x)
+				if c:
+					it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+				if old:
+					it.setForeground(QColor('#b0b0b0'))
+				self.gws.setItem(r, c, it)
+		return
+	# show_gws
+
+	'''-------------------------------------------------------------------
+		double-click: pat connect <the gateway's URL>. Pat moves the dial (through the rigctld port) and puts it back; what it prints goes to the text box
+	-------------------------------------------------------------------'''
+
+	def gw_pick(self, r):
+		call, url = self.gwlist[r][0], self.gwlist[r][6]
+		why = None
+		if self.pat:
+			why = 'Pat is already connecting: right-click > Stop Pat to give up on that one'
+		elif not (self.mdm and self.txrow.isVisible()):
+			why = 'Set Modem to Transmit first: Pat needs the modem to call the gateway'
+		elif not shutil.which('pat'):
+			why = "Can't find pat on the PATH"
+		if why:
+			return self.statusBar().showMessage(why, 8000)
+		self.set_tune(False)		# Pat needs xara's command port
+		self.dec.add(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC  pat connect {url} ---\n")
+		self.pat = QProcess()
+		self.pat.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+		self.pat.readyReadStandardOutput.connect(self.pat_out)
+		self.pat.finished.connect(self.pat_done)
+		self.pat.start('pat', ['connect', url])
+		self.tuneb.setEnabled(False)
+		self.statusBar().showMessage(f'Pat: connecting to {call}', 5000)
+		return
+	# gw_pick
+
+	def pat_out(self):
+		if self.pat:
+			self.dec.add(bytes(self.pat.readAllStandardOutput()).decode(errors='replace'))
+		return
+
+	def pat_done(self, code, status):
+		self.pat_out()
+		self.pat = None
+		self.tuneb.setEnabled(True)
+		self.dec.add(f"--- pat finished{'' if code == 0 else f' (exit {code})'} ---\n")
+		return
+	# pat_done
+
+	def pat_stop(self):		# give up on a connect: Pat hangs up and puts the dial back
+		if self.pat:
+			p = self.pat
+			p.terminate()
+			if not p.waitForFinished(3000):
+				p.kill()
+				p.waitForFinished(1000)
+		return
+	# pat_stop
+
+	def gw_menu(self, pos):
+		menu = QMenu(self)
+		stop = menu.addAction('Stop Pat')
+		stop.setEnabled(bool(self.pat))
+		fresh = menu.addAction('Download a fresh list' if not self.rmsp else 'Downloading…')
+		fresh.setEnabled(not self.rmsp)
+		act = menu.exec(self.gws.viewport().mapToGlobal(pos))
+		if act == stop:
+			self.pat_stop()
+		elif act == fresh:		# rms.py: pat rmslist -d, then rms.db again
+			self.rmsp = QProcess()
+			self.rmsp.setWorkingDirectory(str(HERE))
+			self.rmsp.finished.connect(self.rms_done)
+			self.rmsp.start(sys.executable, [str(HERE / 'rms.py')])
+			self.statusBar().showMessage('Downloading the gateway list…')
+		return
+	# gw_menu
+
+	def rms_done(self, code, status):
+		err = bytes(self.rmsp.readAllStandardError()).decode(errors='replace').strip().splitlines()
+		self.rmsp = None
+		self.statusBar().showMessage('Gateway list updated' if code == 0 else f"rms.py failed: {err[-1] if err else code}", 8000)
+		self.show_gws()
+		return
+	# rms_done
+
 	def modem_gone(self, why):		# xara stopped by itself
 		self.mdm = None
 		self.modem_off()
@@ -2924,6 +3063,8 @@ class Shack(QMainWindow):
 		self.modemst.setStyleSheet('')
 		self.set_tune(False)
 		self.show_tx(False)
+		self.busyl.hide()
+		self.pat_stop()
 		if self.mdm:
 			self.mdm.close()
 			self.mdm = None
@@ -3149,6 +3290,8 @@ class Shack(QMainWindow):
 				quiet(self.lna, self.lna.setMaximum, lna_max(v))		# may clamp the value; that's rspdx's call, not a command
 			else:
 				self.tx_band(v)
+			if self.tabs.currentWidget() is self.gws and self.band_of(v) != self.gwband:
+				self.show_gws()
 		elif k == 'mode' and self.mode.findText(v) >= 0:
 			self.mode.setCurrentText(v)
 			if v.removesuffix('-D') in civ.NOWIDTH:		# FM: the radio doesn't report a width
