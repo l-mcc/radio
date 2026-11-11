@@ -59,7 +59,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it can't transmit yet. Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
@@ -116,6 +116,25 @@ def quiet(w, f, *a):		# change a widget from the radio's side without echoing it
 	w.blockSignals(True)
 	f(*a)
 	w.blockSignals(False)
+
+'''-------------------------------------------------------------------
+	plughw:N of the sound card inside the same radio as serial port dev: on the same USB device, else on the same hub (the hub inside the radio, never the computer's own)
+	None if there isn't one. By port, not by name: the IC-705's and the FTdx10's cards are both called CODEC
+-------------------------------------------------------------------'''
+
+def card_of(dev, sys='/sys'):
+	usb = re.compile(r'\d+-[\d.]+')		# 1-3.1 is a USB device; 1-3.1:1.0 is one of its interfaces, usb1 the computer's root hub
+	d = Path(sys, 'class/tty', Path(dev).resolve().name, 'device').resolve()
+	while d != d.parent and not usb.fullmatch(d.name):
+		d = d.parent
+	if d == d.parent:
+		return None
+	for top in (d, d.parent) if usb.fullmatch(d.parent.name) else (d,):
+		for c in sorted(Path(sys, 'class/sound').glob('card[0-9]*')):
+			if top in (c / 'device').resolve().parents:
+				return 'plughw:' + c.name[4:]
+	return None
+# card_of
 
 '''===================================================================================================================================================
 
@@ -2177,6 +2196,86 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 # class Decoders
 
 
+'''===================================================================================================================================================
+	xara, the VARA modem, run as a child on the open radio's USB sound card: Pat and OpenSlot connect to it (KISS 8100, commands 8300)
+	listen only for now: it plays to ALSA's null device and has no PTT
+	everything it prints goes to xara.log next to shack.py (a new file each start) and to add(text); gone(why) if it stops by itself
+==================================================================================================================================================='''
+
+class Modem:
+	PROG = ('xara', '~/installed/builds/xara/target/release/xara')		# name on the PATH, where else to look
+	CALL = 'N7RTS'
+	PORTS = (8100, 8300)
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def __init__(self, card, hf, add, gone):
+		self.add, self.gone, self.last = add, gone, ''		# last: its last line, the reason when it stops by itself
+		self.log = open(HERE / 'xara.log', 'w')
+		self.p = QProcess()
+		self.p.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+		self.p.readyReadStandardOutput.connect(self.out)
+		self.p.finished.connect(self.ended)
+		self.p.errorOccurred.connect(lambda e: e == QProcess.ProcessError.FailedToStart and self.gone(f"couldn't run xara: {self.p.errorString()}"))
+		self.p.start(self.find(), ['--call', self.CALL, '--audio', 'alsa', '--capture', card, '--playback', 'null', '--hf', str(hf)])
+		return
+	# __init__
+
+	@classmethod
+	def find(cls):		# path of xara, None if it isn't there
+		return next((p for p in (shutil.which(cls.PROG[0]), str(Path(cls.PROG[1]).expanduser())) if p and Path(p).is_file()), None)
+
+	@classmethod
+	def busy(cls):		# one of xara's ports that something already listens on (an xara started by openslot.sh?), None if both are free
+		for port in cls.PORTS:
+			with socket.socket() as s:
+				s.settimeout(0.2)
+				if s.connect_ex(('127.0.0.1', port)) == 0:
+					return port
+		return None
+	# busy
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def out(self):
+		while self.p.canReadLine():
+			line = bytes(self.p.readLine()).decode(errors='replace').rstrip()
+			if line:
+				self.last = line
+				self.log.write(line + '\n')
+				self.log.flush()
+				self.add(line + '\n')
+		return
+	# out
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def ended(self, code, status):
+		self.out()
+		self.log.close()
+		self.gone(f'xara stopped: {self.last}' if self.last else f'xara stopped (exit {code})')
+		return
+	# ended
+
+	'''-------------------------------------------------------------------
+	-------------------------------------------------------------------'''
+
+	def close(self):
+		self.p.finished.disconnect(self.ended)
+		self.p.terminate()
+		if not self.p.waitForFinished(2000):
+			self.p.kill()
+			self.p.waitForFinished(1000)
+		self.out()
+		self.log.close()
+		return
+	# close
+# class Modem
+
+
 '''-------------------------------------------------------------------
 -------------------------------------------------------------------'''
 
@@ -2341,6 +2440,17 @@ class Shack(QMainWindow):
 		h.addStretch()
 		self.clients = QLabel()
 		self.statusBar().addPermanentWidget(self.clients)
+		self.mdm = None		# the running Modem
+		self.modem = QComboBox(toolTip='xara, the VARA modem, on this radio. Listen: it hears and answers Pat and OpenSlot (ports 8100 / 8300) but can\'t transmit. The decoders stop while it runs: it needs the radio\'s sound card')
+		self.modem.addItems(['Off', 'Listen'])
+		self.modem.activated.connect(lambda i: self.set_modem(self.modem.itemText(i)))
+		self.modemst = QLabel()
+		self.modemrow = QWidget()		# Modem: Off / Listen + what it's doing
+		h = QHBoxLayout(self.modemrow)
+		h.setContentsMargins(0, 0, 0, 0)
+		h.addWidget(self.modem)
+		h.addWidget(self.modemst)
+		h.addStretch()
 		self.wf = Waterfall(self.wf_click)		# CI-V band scope, shown while wfb is on
 		self.scoperow = QWidget()		# Waterfall button, span, ref level
 		self.wfb = QPushButton('Waterfall', checkable=True, toolTip='The radio\'s band scope, sent over CI-V')
@@ -2376,11 +2486,11 @@ class Shack(QMainWindow):
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof), ('Display', self.disp),
-				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow)]):
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow), ('Modem', self.modemrow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
 			g.addWidget(self.labels[w], row, 0)
-			g.addWidget(w, row, 1, 1, 2 if w in (self.freq, self.vforow, self.filrow, self.ovl, self.adc, self.smeter, self.power, self.pttrow) else 1)
+			g.addWidget(w, row, 1, 1, 2 if w in (self.freq, self.vforow, self.filrow, self.ovl, self.adc, self.smeter, self.power, self.pttrow, self.modemrow) else 1)
 		row += 1
 		g.addLayout(switches, row, 0, 1, 3)
 		self.helpw = None
@@ -2420,7 +2530,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.smeter, self.swr, self.power, self.pttrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.smeter, self.swr, self.power, self.pttrow, self.modemrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -2471,9 +2581,10 @@ class Shack(QMainWindow):
 		self.scope_for(False)
 		self.rig.read_fast()
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, *([self.scoperow] if r['scope'] else []), self.save, self.bms,
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.modemrow, *([self.scoperow] if r['scope'] else []), self.save, self.bms,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))		# nb, nr: the radio's own, on/off
-		self.dec.opened(r['audio'])		# decoders read the radio's USB sound card
+		self.card = card_of(dev) or r['audio']		# the card in this radio; by name if sysfs doesn't say
+		self.dec.opened(self.card)		# decoders read the radio's USB sound card
 		self.levels()
 		self.tx_band(0)		# no PTT until the radio says where it is
 		self.show_bms()
@@ -2507,9 +2618,10 @@ class Shack(QMainWindow):
 		self.scope_for(True)
 		self.rig.poll(0)
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.scoperow, self.save, self.bms,
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.modemrow, self.scoperow, self.save, self.bms,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))
-		self.dec.opened(r['audio'])
+		self.card = card_of(dev) or r['audio']		# the card in this radio; by name if sysfs doesn't say
+		self.dec.opened(self.card)
 		self.levels()
 		self.tx_band(0)
 		self.show_bms()
@@ -2605,6 +2717,7 @@ class Shack(QMainWindow):
 
 	def shut(self):
 		self.ptt_limit.stop()
+		self.modem_off()
 		self.dec.closed()
 		self.vfomem, self.vfo_on = {}, None
 		if self.rig:
@@ -2641,6 +2754,59 @@ class Shack(QMainWindow):
 		self.only(())
 		return
 	# shut
+
+	'''-------------------------------------------------------------------
+		Modem: Listen starts xara on the radio's sound card (the decoders give it up), the radio on VFO A, split off, USB-D; Off stops it and the decoders can run again
+	-------------------------------------------------------------------'''
+
+	def set_modem(self, kind):
+		self.modem_off()
+		if kind == 'Off' or not isinstance(self.rig, (civ.Rig, cat.Rig)):
+			return
+		why = None
+		if not Modem.find():
+			why = f"can't find xara (on the PATH or in {Path(Modem.PROG[1]).parent})"
+		elif Modem.busy():
+			why = f'port {Modem.busy()} is in use: another xara running (./os)? Stop it first'
+		if why:
+			quiet(self.modem, self.modem.setCurrentIndex, 0)
+			return self.modemst.setText(why)
+		self.dec.closed()		# arecord lets go of the card
+		for w in (self.dec.row, self.dec.scopeb):
+			w.setEnabled(False)
+		moved = self.rig.vfo != 'A'
+		if moved:
+			self.rig.set('vfo', 'A')
+		if self.rig.split:
+			self.rig.set('split', 0)
+		if moved or self.rig.mode != 'USB-D':		# after a VFO change its mode isn't known yet
+			self.rig.set('mode', 'USB-D')
+		self.dec.add(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC  xara, listen only, {self.dec.hf} Hz, {self.card} ---\n")
+		self.mdm = Modem(self.card, self.dec.hf, self.dec.add, self.modem_gone)
+		quiet(self.modem, self.modem.setCurrentText, kind)		# modem_off put it on Off
+		self.modemst.setText(f'xara listening, {self.dec.hf} Hz, {self.card}   (xara.log)')
+		return
+	# set_modem
+
+	def modem_gone(self, why):		# xara stopped by itself
+		self.mdm = None
+		self.modem_off()
+		self.modemst.setText(why)
+		return
+
+	def modem_off(self):
+		if self.mdm:
+			self.mdm.close()
+			self.mdm = None
+		quiet(self.modem, self.modem.setCurrentIndex, 0)
+		self.modemst.setText('')
+		if not self.dec.row.isEnabled():		# the decoders get the card back
+			for w in (self.dec.row, self.dec.scopeb):
+				w.setEnabled(True)
+			if isinstance(self.rig, (civ.Rig, cat.Rig)):
+				self.dec.opened(self.card)
+		return
+	# modem_off
 
 	'''-------------------------------------------------------------------
 	-------------------------------------------------------------------'''
