@@ -2445,12 +2445,12 @@ class Shack(QMainWindow):
 		self.modem.addItems(['Off', 'Listen'])
 		self.modem.activated.connect(lambda i: self.set_modem(self.modem.itemText(i)))
 		self.modemst = QLabel()
-		self.modemrow = QWidget()		# Modem: Off / Listen + what it's doing
+		self.modemrow = QWidget()		# Modem: Off / Listen + what it's doing; sits left of the Decoder controls (one or the other has the sound card)
 		h = QHBoxLayout(self.modemrow)
-		h.setContentsMargins(0, 0, 0, 0)
+		h.setContentsMargins(0, 0, 12, 0)
+		h.addWidget(QLabel('Modem'))
 		h.addWidget(self.modem)
 		h.addWidget(self.modemst)
-		h.addStretch()
 		self.wf = Waterfall(self.wf_click)		# CI-V band scope, shown while wfb is on
 		self.scoperow = QWidget()		# Waterfall button, span, ref level
 		self.wfb = QPushButton('Waterfall', checkable=True, toolTip='The radio\'s band scope, sent over CI-V')
@@ -2486,11 +2486,11 @@ class Shack(QMainWindow):
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
 		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof), ('Display', self.disp),
-				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow), ('Modem', self.modemrow)]):
+				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
 			g.addWidget(self.labels[w], row, 0)
-			g.addWidget(w, row, 1, 1, 2 if w in (self.freq, self.vforow, self.filrow, self.ovl, self.adc, self.smeter, self.power, self.pttrow, self.modemrow) else 1)
+			g.addWidget(w, row, 1, 1, 2 if w in (self.freq, self.vforow, self.filrow, self.ovl, self.adc, self.smeter, self.power, self.pttrow) else 1)
 		row += 1
 		g.addLayout(switches, row, 0, 1, 3)
 		self.helpw = None
@@ -2514,8 +2514,11 @@ class Shack(QMainWindow):
 		g.addWidget(self.wf, row, 0, 1, 3)
 		row += 1
 		self.labels[self.dec.row] = QLabel('Decoder')
-		g.addWidget(self.labels[self.dec.row], row, 0)
-		g.addWidget(self.dec.row, row, 1, 1, 2)
+		h = QHBoxLayout()		# one line: Modem (radios that transmit), then Decoder
+		h.addWidget(self.modemrow)
+		h.addWidget(self.labels[self.dec.row])
+		h.addWidget(self.dec.row, 1)
+		g.addLayout(h, row, 0, 1, 3)
 		row += 1
 		g.addWidget(self.dec.spec, row, 0, 1, 3)
 		row += 1
