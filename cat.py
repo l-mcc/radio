@@ -13,6 +13,8 @@ MODES = {'LSB': '1', 'USB': '2', 'CW': '3', 'NBFM': '4', 'AM': '5', 'RTTY': '6',
 RMODES = {v: k for k, v in MODES.items()}
 SMETER = [(0, -54), (12, -48), (27, -42), (40, -36), (55, -30), (65, -24), (80, -18), (95, -12), (112, -6), (130, 0), (150, 10), (172, 20), (190, 30), (220, 40), (240, 50), (255, 60)]		# SM0 0-255 -> dB re S9, Hamlib's Yaesu table: check against the radio's meter
 
+PO = [(0, 0), (27, 5), (94, 25), (147, 50), (176, 75), (205, 100)]		# RM5 -> watts, Hamlib's FTdx10 table (0 added)
+SWR = [(0, 1.0), (26, 1.2), (52, 1.5), (89, 2.0), (126, 3.0), (173, 4.0), (236, 5.0), (255, 25.0)]		# RM6 -> SWR, Hamlib's (measured on an FTdx101D)
 PREAMPS = ['IPO', 'AMP1', 'AMP2']		# PA0 0-2
 ATTS = ['Off', '6 dB', '12 dB', '18 dB']		# RA0 0-3
 ROOFS = {'12 kHz': ('1', '6'), '3 kHz': ('2', '7'), '500 Hz': ('4', '9')}		# RF0: (set value, answer value); 300 Hz is an option filter
@@ -97,7 +99,7 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 	-------------------------------------------------------------------'''
 
 	def poll(self, n):
-		self.send(self.POLL + (self.read_fast() + self.SLOW if n % 4 == 0 else ''))
+		self.send(self.POLL + ('RM4;RM5;RM6;' if self.tx else '') + (self.read_fast() + self.SLOW if n % 4 == 0 else ''))		# transmitting: ALC, power, SWR meters too
 		return
 	# poll
 
@@ -160,6 +162,14 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 				self.limit()
 		elif cmd == 'SM' and len(d) == 4 and d.isdigit():
 			self.emit('smeter', smeter(int(d[1:])))
+		elif cmd == 'RM' and len(d) >= 4 and d[:4].isdigit():		# meter number, 000-255 (newer firmware adds three more digits)
+			raw = int(d[1:4])
+			if d[0] == '4':
+				self.emit('alc', min(raw / 64, 1.0))		# 64 = the top of the ALC zone, as Hamlib has it
+			elif d[0] == '5':
+				self.emit('watts', civ.cal(raw, PO))
+			elif d[0] == '6':
+				self.emit('swr', (civ.cal(raw, SWR), raw))
 		elif cmd == 'TX' and d.isdigit():
 			self.tx = int(d != '0')		# 1 = keyed by CAT, 2 = by the mic or the rear jack
 			self.emit('ptt', self.tx)

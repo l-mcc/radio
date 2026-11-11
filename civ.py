@@ -49,8 +49,14 @@ def swr(v):
 	(a, x), (b, y) = next((p, q) for p, q in zip(SWR, SWR[1:]) if v < q[0])
 	return x + (v - a) / (b - a) * (y - x)
 
+def cal(v, table):		# a raw meter reading -> its value, straight lines between the table's (raw, value) points; flat beyond the ends
+	(a, x), (b, y) = next(((p, q) for p, q in zip(table, table[1:]) if v <= q[0]), (table[-1], table[-1]))
+	return y if a == b else x + (max(v, a) - a) / (b - a) * (y - x)
+
+PO_705 = [(0, 0), (21, 0.5), (43, 1), (65, 1.5), (83, 2), (95, 2.5), (105, 3), (114, 3.5), (124, 4), (143, 5), (183, 7.5), (213, 10), (255, 12)]		# 15 11 -> watts, Hamlib's IC-705 table
+
 RIGS = {		# port: by-id pattern of the CI-V port; audio: ALSA name of its USB sound card (receive audio for shack's decoders); top: MHz; att: 11 xx value for on; agc: 16 12 values; watts: power at 00 and 255 (None = show %); swr: 15 12 meter works; scope: sends its band scope over CI-V (27 00)
-	'IC-705': dict(port='*IC-705*if00', audio='plughw:CARD=CODEC', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None, swr=True, scope=True,
+	'IC-705': dict(port='*IC-705*if00', audio='plughw:CARD=CODEC', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None, swr=True, scope=True, po=PO_705,
 		vara=dict(drive=-15, pcm=103, pwr=255)),		# VARA transmit (shack's Modem): xara's drive dB, the card's PCM mixer step (0-128, 1 dB each), RF power 0-255. 100 % power: 9.8 W, ALC 0.08 (105: ALC 0.16; 115: 0.5-0.7; 127: 0.98; 2026-11-10)
 	'Xiegu x6200': dict(port='*1a86_USB_Dual_Serial*if02', audio='plughw:CARD=Device', baud=19200, modes=['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'NBFM'], top=108,		# its if00 is the radio's Linux console, never CI-V
 		att=0x01, agc={'Off': 0, 'Fast': 1, 'Slow': 2, 'Auto': 3}, watts=(1, 8), swr=False, scope=False),		# power below 1 W reads back as 00 FA; 15 12 always 0 (firmware as of 2026-10)
@@ -81,6 +87,7 @@ class Rig:
 		s.tx = 0		# as last reported by 1C 00
 		s.vfo, s.split = '', 0		# vfo: what was last set from here ('' = never; the radio can't be asked); split: as last reported by 0F
 		s.att_on = 0x20		# 11 xx for attenuator on: 705 20 (dB), X6200 01 (RIGS att)
+		s.po = None		# (raw, watts) table for the Po meter (RIGS po); None: no power reading
 		s.alive, s.heard = True, time.monotonic()		# heard: last frame from the radio
 		threading.Thread(target=s.reader, daemon=True).start()
 
@@ -175,6 +182,10 @@ class Rig:
 			s.emit('smeter', round(v / 120 * 54 - 54 if v <= 120 else (v - 120) / 121 * 60))
 		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x12 and d[1:].hex().isdigit():
 			s.emit('swr', (swr(int(d[1:].hex())), int(d[1:].hex())))		# (SWR, raw meter)
+		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x11 and d[1:].hex().isdigit() and s.po:		# Po meter
+			s.emit('watts', cal(int(d[1:].hex()), s.po))
+		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x13 and d[1:].hex().isdigit():		# ALC meter: 120 = the top of its zone
+			s.emit('alc', min(int(d[1:].hex()) / 120, 1.0))
 		elif cmd == 0x27 and len(d) == 5 and d[0] == 0x19:		# ref level: 00, dB BCD (xx.xx), sign
 			s.emit('ref', int(d[2:4].hex()) / 100 * (-1 if d[4] else 1))
 		elif cmd == 0x27 and len(d) == 3 and d[0] in RSCOPE:
