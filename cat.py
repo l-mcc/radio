@@ -55,7 +55,7 @@ def smeter(v):
 
 class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same face as civ.Rig
 	POLL = 'SM0;TX;'		# every 250 ms
-	SLOW = 'VS;MD0;AG0;RG0;PC;PA0;RA0;RF0;GT0;NB0;NR0;NL0;RL0;' + ''.join(f'EX{k};' for k in MAXW) + ''.join(f'SS0{p};' for p in '01234568') + 'EX040201;DA;'		# every second, so the radio's own knobs show up too
+	SLOW = 'VS;MD0;AG0;RG0;PC;PA0;RA0;RF0;GT0;NB0;NR0;NL0;RL0;' + ''.join(f'EX{k};' for k in MAXW) + ''.join(f'SS0{p};' for p in '01234568') + 'EX040201;DA;ST;'		# every second, so the radio's own knobs show up too
 
 	'''-------------------------------------------------------------------
 		RTS held high: the Enhanced port uses it as flow control, the radio holds its replies while it's low
@@ -68,6 +68,8 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		self.emit = emit		# emit(kind, value) is called from the reader thread
 		self.wlock = threading.Lock()
 		self.mhz, self.vfo, self.tx, self.mode = 0.0, 'A', 0, ''
+		self.split = 0		# ST: the radio transmits on the other VFO
+		self.modes = RIGS['FTdx10']['modes']
 		self.maxw, self.pmax = {}, 0		# the radio's MAX POWER menu limits; the one that applies now
 		self.oddref = None		# an SS04 reply that isn't a number, logged once
 		self.kick = False		# after a VS from here: the radio shows the new VFO but keeps receiving the old one until its frequency changes
@@ -160,6 +162,8 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		elif cmd == 'TX' and d.isdigit():
 			self.tx = int(d != '0')		# 1 = keyed by CAT, 2 = by the mic or the rear jack
 			self.emit('ptt', self.tx)
+		elif cmd == 'ST' and d.isdigit():		# 1 = split, 2 = split +5 kHz
+			self.split = int(d != '0')
 		elif cmd == 'VS' and d in ('0', '1'):
 			v = 'AB'[int(d)]
 			if v != self.vfo:
@@ -248,6 +252,8 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 		elif k == 'vfo':
 			self.kick = True
 			self.send(f"VS{0 if v == 'A' else 1};VS;")
+		elif k == 'split':
+			self.send(f'ST{1 if int(v) else 0};ST;')
 		elif k == 'v':		# shack's volume 0-1
 			self.set('vol', round(float(v) * 255))
 		elif k in ('vol', 'rfg'):

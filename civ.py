@@ -78,6 +78,7 @@ class Rig:
 		s.last_set = 0.0		# NG only reported right after a user command; polls may NG quietly
 		s.mhz, s.band, s.win = 0.0, False, None		# band view: fixed scope edges that follow the dial
 		s.tx = 0		# as last reported by 1C 00
+		s.vfo, s.split = '', 0		# vfo: what was last set from here ('' = never; the radio can't be asked); split: as last reported by 0F
 		s.att_on = 0x20		# 11 xx for attenuator on: 705 20 (dB), X6200 01 (RIGS att)
 		s.alive, s.heard = True, time.monotonic()		# heard: last frame from the radio
 		threading.Thread(target=s.reader, daemon=True).start()
@@ -93,6 +94,7 @@ class Rig:
 		s.send(0x03)
 		s.send(0x04)
 		s.send(0x1C, 0x00)
+		s.send(0x0F)
 		if b in DATA_OK:
 			s.send(0x1A, 0x06)
 		if b and b not in NOWIDTH:
@@ -101,6 +103,10 @@ class Rig:
 	def read_slow(s):
 		for c in [*CTL.values(), (0x11,), (0x27, 0x19, 0x00), *((0x27, sub, 0x00) for sub in SCOPE.values())]:
 			s.send(*c)
+
+	@property
+	def mode(s):		# 'USB-D': as emit_mode sends it, '' until the radio has said
+		return s.base + ('-D' if s.data and s.base in DATA_OK else '') if s.base in MODES else ''
 
 	def close(s):
 		s.alive = False
@@ -157,6 +163,8 @@ class Rig:
 		elif cmd == 0x1C and len(d) == 2 and d[0] == 0x00:
 			s.tx = d[1]
 			s.emit('ptt', d[1])
+		elif cmd == 0x0F and len(d) == 1 and d[0] in (0, 1):		# 10-13 are duplex settings
+			s.split = d[0]
 		elif cmd == 0x11 and len(d) == 1:
 			s.emit('att', int(d[0] != 0))
 		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x02:
@@ -257,9 +265,13 @@ class Rig:
 			s.send(0x27, 0x19, 0x00, *bytes.fromhex(f'{n:04d}'), 0x01 if float(v) < 0 else 0x00)
 			s.send(0x27, 0x19, 0x00)
 		elif k == 'vfo':		# no read command for the selected VFO, so the engine remembers what it set
+			s.vfo = 'A' if v == 'A' else 'B'
 			s.send(0x07, 0x00 if v == 'A' else 0x01)
-			s.emit('vfo', 'A' if v == 'A' else 'B')
+			s.emit('vfo', s.vfo)
 			s.read_fast('')		# the other VFO's mode isn't known yet
+		elif k == 'split':
+			s.send(0x0F, 0x01 if int(v) else 0x00)
+			s.send(0x0F)
 		elif k == 'band':
 			s.band = bool(int(v))
 			s.emit('band', int(s.band))
@@ -287,7 +299,33 @@ class Rig:
 		else:
 			raise KeyError(k)
 
-class PttServer(socketserver.ThreadingTCPServer):
+HAMLIB = {'USB-D': 'PKTUSB', 'LSB-D': 'PKTLSB', 'NBFM': 'FM', 'NBFM-D': 'PKTFM', 'WBFM': 'WFM', 'CW-R': 'CWR', 'RTTY-R': 'RTTYR', 'AM-N': 'AMN', 'FM-N': 'FMN'}		# our mode names -> Hamlib's; the rest are the same
+RHAMLIB = {v: k for k, v in HAMLIB.items()}
+LONG = {'get_freq': 'f', 'set_freq': 'F', 'get_mode': 'm', 'set_mode': 'M', 'get_ptt': 't', 'set_ptt': 'T', 'get_vfo': 'v', 'set_vfo': 'V', 'get_split_vfo': 's', 'set_split_vfo': 'S'}		# \get_freq = f
+DUMP = """0
+2
+2
+100000.000000 470000000.000000 0x1ff -1 -1 0x3 0x0
+0 0 0 0 0 0 0
+1800000.000000 450000000.000000 0x1ff 100 100000 0x3 0x0
+0 0 0 0 0 0 0
+0x1ff 1
+0 0
+0 0
+0
+0
+0
+0
+
+
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0"""		# \dump_state, protocol 0: what a Hamlib client (rigctl -m 2, WSJT-X, JS8Call, fldigi) asks first. RX range, TX range, tuning step, no filters, no RIT/XIT/IF shift, no preamp/att lists, no functions/levels/parms
+
+class RigServer(socketserver.ThreadingTCPServer):
 	allow_reuse_address = daemon_threads = True
 	clients = 0
 	closed = False
@@ -302,7 +340,56 @@ class PttServer(socketserver.ThreadingTCPServer):
 				pass
 		s.server_close()
 
-def serve_ptt(rig, port=4532, host='127.0.0.1'):		# the bit of rigctld xara uses: T 1, T 0, t
+def serve_rigctld(rig, port=4532, host='127.0.0.1'):		# the part of rigctld that xara (T), Pat (f F), openslot.sh and Hamlib clients use, answered by the radio shack has open. rig: civ.Rig or cat.Rig
+	def settled(ok):		# a set is answered once the radio has reported it (0.5 s at most): a client reading straight back gets the new value
+		t = time.monotonic() + 0.5
+		while not ok() and time.monotonic() < t and rig.alive:
+			time.sleep(0.02)
+
+	def answer(op, a):		# one command -> its reply, None = not one of ours
+		if op == 'f':
+			return str(round(rig.mhz * 1e6))
+		if op == 'F' and a:
+			hz = round(float(a[-1]))		# a[-1]: 'F VFOA 7102300' from a client in VFO mode
+			rig.set('mhz', hz / 1e6)
+			settled(lambda: round(rig.mhz * 1e6) == hz)
+			return 'RPRT 0'
+		if op == 'm':
+			return f'{HAMLIB.get(rig.mode, rig.mode)}\n0' if rig.mode else 'RPRT -1'		# mode, passband (0 = the radio's own)
+		if op == 'M' and a:
+			name = next((x for x in a if not x.startswith('VFO') and not x.lstrip('-').isdigit()), '')
+			mode = RHAMLIB.get(name, name)
+			if mode not in rig.modes:
+				return 'RPRT -1'
+			if mode != rig.mode:		# already there: untouched (a set would put a CI-V radio back on FIL1)
+				rig.set('mode', mode)
+				settled(lambda: rig.mode == mode)
+			return 'RPRT 0'
+		if op == 't':
+			return str(int(bool(rig.tx)))
+		if op == 'v':
+			return 'VFO' + (rig.vfo or 'A')
+		if op == 'V' and a and a[-1] in ('VFOA', 'VFOB'):
+			if a[-1][3] != rig.vfo:
+				rig.set('vfo', a[-1][3])
+				settled(lambda: rig.vfo == a[-1][3])
+			return 'RPRT 0'
+		if op == 's':
+			return f"{rig.split}\nVFO{'B' if rig.split else rig.vfo or 'A'}"		# split, TX VFO
+		if op == 'S' and a and a[0] in ('0', '1'):
+			rig.set('split', int(a[0]))
+			settled(lambda: rig.split == int(a[0]))
+			return 'RPRT 0' if rig.split == int(a[0]) else 'RPRT -1'
+		if op == 'chk_vfo':
+			return '0'		# commands come without a VFO argument
+		if op == 'dump_state':
+			return DUMP
+		if op == 'get_powerstat':
+			return '1'
+		if op == 'get_lock_mode':		# Hamlib 4.5 asks before every set_mode
+			return '0'
+		return None
+
 	class H(socketserver.StreamRequestHandler):
 		def handle(h):
 			keyed = False
@@ -314,26 +401,39 @@ def serve_ptt(rig, port=4532, host='127.0.0.1'):		# the bit of rigctld xara uses
 					if not rig.alive or srv.closed:		# radio gone: hang up rather than answer RPRT 0 for a PTT that does nothing
 						break
 					c = line.decode(errors='replace').split()
-					if len(c) == 2 and c[0] == 'T' and c[1] in ('0', '1'):
-						ok = rig.ptt(c[1] == '1')
-						keyed = c[1] == '1' and ok
+					if not c:
+						continue
+					op = c[0][1:] if c[0].startswith('\\') else c[0]		# \set_freq 7102300 = F 7102300
+					op = LONG.get(op, op)
+					if op == 'T' and len(c) > 1 and c[-1] in ('0', '1', '2', '3'):		# Hamlib: 1 = on, 2 = on (mic), 3 = on (data)
+						ok = rig.ptt(c[-1] != '0')
+						keyed = c[-1] != '0' and ok
 						r = 'RPRT 0' if ok else 'RPRT -1'		# -1: refused, outside the ham bands
-					elif c == ['t']:
-						r = str(rig.tx)
-					elif c in (['q'], ['Q']):
+					elif op in ('q', 'Q'):
 						break
 					else:
-						r = 'RPRT -4'		# not implemented
+						try:
+							r = answer(op, c[1:])
+						except (ValueError, KeyError) as e:
+							log.info(f'rigctld port: {" ".join(c)!r}: {e!r}')
+							r = 'RPRT -1'
+						if r is None:
+							if c[0] not in srv.odd:		# once per command: what a new client wants that isn't here yet
+								srv.odd.add(c[0])
+								log.info(f'rigctld port: no answer for {" ".join(c)!r}')
+							r = 'RPRT -4'		# not implemented
 					h.wfile.write((r + '\n').encode())
+			except OSError:		# the client dropped the connection mid-reply
+				pass
 			finally:
 				if keyed:
-					rig.ptt(False)		# client gone while keyed: never leave the 705 transmitting
+					rig.ptt(False)		# client gone while keyed: never leave the radio transmitting
 				srv.conns.discard(h.connection)
 				srv.clients -= 1
 				if not srv.closed:		# after stop() the window may already belong to another radio
 					rig.emit('ptt_clients', srv.clients)
-	srv = PttServer((host, port), H)
-	srv.conns = set()
+	srv = RigServer((host, port), H)
+	srv.conns, srv.odd = set(), set()
 	threading.Thread(target=srv.serve_forever, daemon=True).start()
 	return srv
 
