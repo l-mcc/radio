@@ -163,7 +163,9 @@ class Rig:		# Yaesu ASCII CAT (FA014074000;) over the radio's USB serial; same f
 			self.tx = int(d != '0')		# 1 = keyed by CAT, 2 = by the mic or the rear jack
 			self.emit('ptt', self.tx)
 		elif cmd == 'ST' and d.isdigit():		# 1 = split, 2 = split +5 kHz
-			self.split = int(d != '0')
+			if int(d != '0') != self.split:
+				self.split = int(d != '0')
+				self.emit('split', self.split)
 		elif cmd == 'VS' and d in ('0', '1'):
 			v = 'AB'[int(d)]
 			if v != self.vfo:

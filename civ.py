@@ -164,7 +164,9 @@ class Rig:
 			s.tx = d[1]
 			s.emit('ptt', d[1])
 		elif cmd == 0x0F and len(d) == 1 and d[0] in (0, 1):		# 10-13 are duplex settings
-			s.split = d[0]
+			if d[0] != s.split:
+				s.split = d[0]
+				s.emit('split', d[0])
 		elif cmd == 0x11 and len(d) == 1:
 			s.emit('att', int(d[0] != 0))
 		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x02:

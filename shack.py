@@ -59,7 +59,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
@@ -2257,6 +2257,11 @@ class Shack(QMainWindow):
 			b = self.vfo[k] = QPushButton(f'VFO {k}', checkable=True)
 			b.clicked.connect(lambda on, k=k: self.pick_vfo(k))
 			h.addWidget(b)
+		self.splitb = QPushButton('SPLIT', toolTip='The radio is in split: it transmits on the other VFO\'s frequency. Click to turn split off')		# only there while split is on
+		self.splitb.setStyleSheet('color: white; background: red; font-weight: bold')
+		self.splitb.clicked.connect(lambda: self.rig and self.rig.set('split', 0))
+		self.splitb.hide()
+		h.addWidget(self.splitb)
 		h.addStretch()
 		self.ifr = QSpinBox(minimum=20, maximum=59, suffix=' dB', keyboardTracking=False)		# IF gain reduction
 		self.ifr.valueChanged.connect(lambda v: self.rig and self.rig.set('if', v))
@@ -2616,6 +2621,7 @@ class Shack(QMainWindow):
 			self.srv = None
 		self.radio.setCurrentText('none')
 		self.clients.setText('')
+		self.splitb.hide()
 		self.on_rig('ovl', (0, 0))
 		self.bms.setRowCount(0)
 		self.adc.setValue(-60)
@@ -2930,6 +2936,8 @@ class Shack(QMainWindow):
 			self.tx.setText('TX' if v else 'RX')
 			self.tx.setStyleSheet('color: white; background: red' if v else '')
 			self.pttb.setChecked(bool(v))		# also when xara or the radio's tuner keys it
+		elif k == 'split':
+			self.splitb.setVisible(bool(v))
 		elif k == 'ptt_clients':
 			self.clients.setText(f'PTT port {self.srv.server_address[1]}: {v} connected' if self.srv else 'PTT port off')
 		elif k == 'gone' and self.rig:
