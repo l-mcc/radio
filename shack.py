@@ -8,7 +8,7 @@ import serial
 from PyQt6.QtCore import pyqtSignal, QEvent, QPointF, QProcess, QProcessEnvironment, QRect, QSize, Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
-	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
+	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
 import cat, civ, styles
 try:		# decoders need numpy; without it shack still runs, the Decoder row says why
@@ -59,7 +59,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest; on the IC-705 and Xiegu click VFO A or B once before Save so shack knows which one the radio is on), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO; CI-V can't read which one the radio is on, so neither is lit until you click one (and switching on the radio itself doesn't show here). TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. Double-click one with Modem on Transmit: Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. Right-click > Stop Pat gives up on a connect. Pat's own page (mailbox, compose: pat http) is started with the modem if it isn't running already, and closed with the radio if shack started it; right-click > Pat mailbox opens it in the browser. BUSY at the bottom of the window is red while the modem hears a signal on the frequency. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. CI-V can't read which one the radio is on, so opening the IC-705 or Xiegu puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. Double-click one with Modem on Transmit: Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. Right-click > Stop Pat gives up on a connect. Pat's own page (mailbox, compose: pat http) is started with the modem if it isn't running already, and closed with the radio if shack started it; right-click > Pat mailbox opens it in the browser. BUSY in the bottom left corner of the window is red while xara (the modem, or the VARA decoder run by xara) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
@@ -1167,7 +1167,8 @@ class XaraRx(Helper):		# VARA decoded by xara itself (the modem, listening, no h
 
 	def __init__(self, hf, add, gone):
 		super().__init__('xara', ['--playback', '--raw', '--format=s16le', '--rate=48000', '--channels=1', f'--device={self.SINK}', '--latency-msec=200'], (1500 - hf / 2, 1500 + hf / 2), add, gone)
-		self.hf, self.said, self.busy = hf, '', False		# its last line; BUSY ON / OFF (a signal in the channel) goes to the status line
+		self.hf, self.said, self.busy = hf, '', False		# its last line; BUSY ON / OFF (a signal in the channel): the status line and chan(on)
+		self.chan = None		# chan(on): BUSY on the window's bottom line (Decoders sets it)
 		self.m = QProcess()
 		env = QProcessEnvironment.systemEnvironment()
 		env.insert('PULSE_SOURCE', f'{self.SINK}.monitor')		# ALSA's pulse device records from here
@@ -1189,6 +1190,8 @@ class XaraRx(Helper):		# VARA decoded by xara itself (the modem, listening, no h
 			m = re.search(r'< BUSY (ON|OFF)$', line)
 			if m:
 				self.busy = m[1] == 'ON'
+				if self.chan:
+					self.chan(self.busy)
 			else:
 				self.add(line + '\n')
 		return
@@ -1521,6 +1524,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.sq = {'RTTY': 6, 'CW': 10, 'PSK31': 2}		# squelch dB per decoder (PSK31: low, its quality gate does most of the work)
 		self.hf = 2300		# VARA bandwidth
 		self.vx = False		# VARA decoded by xara itself instead of xara-monitor
+		self.busy = None		# busy(on): xara's BUSY to the window's bottom line (Shack sets it)
 		self.pk = 300		# packet baud
 		self.om, self.ocont = '8/250', False		# Olivia tones/bandwidth; Contestia instead
 		self.hide = True		# hide direwolf's complaints about non-APRS packets
@@ -1692,6 +1696,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		if self.kind in Helper.PROGRAMS:
 			if self.kind == 'VARA' and self.vx:
 				h = XaraRx(self.hf, self.add, self.died)
+				h.chan = self.busy
 			elif self.kind == 'VARA':
 				h = Helper('VARA', ['--stdin', '48000', '--hf', str(self.hf), '--calls', str(self.calls())], (1500 - self.hf / 2, 1500 + self.hf / 2), self.add, self.died)		# VARA sits at 1500 Hz
 				h.seen = self.named
@@ -1735,6 +1740,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			self.rec.kill()
 			self.rec.waitForFinished(1000)
 			self.rec = None
+		if isinstance(self.dec, XaraRx) and self.busy:
+			self.busy(False)
 		if isinstance(self.dec, (Helper, Wsjt)):
 			self.dec.close()
 		if self.sk:
@@ -2288,6 +2295,37 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	everything it prints goes to xara.log next to shack.py (a new file each start) and to add(text); gone(why) if it stops by itself
 ==================================================================================================================================================='''
 
+class Status(QStatusBar):		# the window's bottom line: BUSY at the left corner, always there; messages in a label beside it (QStatusBar's own message would hide BUSY while it shows)
+	def __init__(self):
+		super().__init__()
+		self.busy = QLabel(' BUSY ', toolTip='xara hears a signal on the frequency (the modem, or the VARA decoder run by xara): red while it does, grey otherwise')
+		self.msg = QLabel()
+		self.msg.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)		# a long message doesn't widen the window
+		self.addWidget(self.busy)
+		self.addWidget(self.msg, 1)
+		self.t = QTimer(singleShot=True, timeout=self.msg.clear)
+		self.set_busy(False)
+		return
+	# __init__
+
+	def showMessage(self, text, timeout=0):		# same call as QStatusBar's
+		self.msg.setText(text)
+		self.t.start(timeout) if timeout else self.t.stop()
+		return
+
+	def clearMessage(self):
+		self.msg.clear()
+
+	def set_busy(self, on):
+		self.busy.setStyleSheet('color: white; background: red; font-weight: bold' if on else 'color: #b0b0b0')
+		return
+# class Status
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
 class Modem:
 	PROG = ('xara', '~/installed/builds/xara/target/release/xara')		# name on the PATH, where else to look
 	CALL = 'N7RTS'
@@ -2440,9 +2478,9 @@ class Shack(QMainWindow):
 		self.vol.valueChanged.connect(lambda v: self.rig and self.rig.set('v', v))
 		self.rfg = QSpinBox(minimum=0, maximum=100, singleStep=5, suffix=' %', keyboardTracking=False, toolTip='The radio\'s RF gain; 100 % = full gain')
 		self.rfg.valueChanged.connect(lambda v: self.rig and self.rig.set('rfg', round(v * 2.55)))
-		self.vfo = {}		# A, B: which one the radio listens on; neither lit until one is picked (CI-V can't ask the radio)
+		self.vfo = {}		# A, B: which one the radio listens on (CI-V can't ask the radio: shack selects the one it last used when the radio is opened)
 		self.vfomem, self.vfo_on, self.vfo_t = {}, None, 0.0		# FTdx10: each VFO's settings as last seen, the VFO it reports, when that last changed
-		self.vforow = QWidget(toolTip='The radio\'s VFO A or B. CI-V can\'t read which one the radio is on, so neither is lit until you pick one here')
+		self.vforow = QWidget(toolTip='The radio\'s VFO A or B. IC-705, Xiegu: CI-V can\'t read which one the radio is on, so shack puts it on the one it last used when you open it')
 		h = QHBoxLayout(self.vforow)
 		h.setContentsMargins(0, 0, 0, 0)
 		for k in ('A', 'B'):
@@ -2529,6 +2567,7 @@ class Shack(QMainWindow):
 		self.gwlist, self.gwband, self.pat, self.rmsp = [], None, None, None		# rows shown, their band, a running pat connect, a running rms.py
 		self.patw = None		# pat http when shack started it
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
+		self.dec.busy = self.set_busy		# the VARA decoder run by xara lights BUSY too
 		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
@@ -2566,9 +2605,7 @@ class Shack(QMainWindow):
 		h.addWidget(self.pcm)
 		h.addStretch()
 		self.clients = QLabel()
-		self.busyl = QLabel(' BUSY ', toolTip='The modem hears a signal on the frequency: red while it does')		# there while the modem runs
-		self.busyl.hide()
-		self.statusBar().addPermanentWidget(self.busyl)
+		self.setStatusBar(Status())
 		self.statusBar().addPermanentWidget(self.clients)
 		self.mdm = None		# the running Modem
 		self.modem = QComboBox(toolTip='xara, the VARA modem, on this radio, for Pat and OpenSlot (ports 8100 / 8300). Listen: it can\'t transmit. Transmit: it plays into the radio and keys it. The decoders stop while it runs: it needs the radio\'s sound card')
@@ -2719,6 +2756,7 @@ class Shack(QMainWindow):
 		self.rig.send(0x27, 0x11, 0x00)		# no scope data until the waterfall step
 		self.scope_for(False)
 		self.rig.read_fast()
+		self.rig.set('vfo', self.bm.pref(f'vfo {name}', 'A'))		# CI-V can't tell which VFO the radio is on: put it on the one shack last left it on, so the right button lights
 		self.smeter.setRange(-54, 60)
 		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.modemrow, *([self.scoperow] if r['scope'] else []), self.save, self.tabs,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))		# nb, nr: the radio's own, on/off
@@ -2965,7 +3003,6 @@ class Shack(QMainWindow):
 		self.mdm = Modem(self.card, self.dec.hf, self.dec.add, self.modem_gone, tx, self.set_busy)
 		self.pat_http()		# Pat's page for the mail, if it isn't up
 		self.set_busy(False)
-		self.busyl.show()
 		self.show_tx(bool(tx))
 		self.modemst.setText(f"xara {'TRANSMIT enabled' if tx else 'listening'}, {self.card}   (xara.log)")
 		self.modemst.setStyleSheet('color: #c00000; font-weight: bold' if tx else '')
@@ -3028,7 +3065,7 @@ class Shack(QMainWindow):
 	# set_tune
 
 	def set_busy(self, on):
-		self.busyl.setStyleSheet('color: white; background: red; font-weight: bold' if on else 'color: #b0b0b0')
+		self.statusBar().set_busy(on)
 		return
 
 	'''-------------------------------------------------------------------
@@ -3208,7 +3245,7 @@ class Shack(QMainWindow):
 		self.modemst.setStyleSheet('')
 		self.set_tune(False)
 		self.show_tx(False)
-		self.busyl.hide()
+		self.set_busy(False)
 		self.pat_stop()
 		if self.mdm:
 			self.mdm.close()
@@ -3469,6 +3506,8 @@ class Shack(QMainWindow):
 		elif k == 'vfo':		# CI-V: what civ last set (the radio can't be asked); FTdx10: what the radio reports
 			for x, b in self.vfo.items():
 				b.setChecked(x == v)
+			if isinstance(self.rig, civ.Rig) and v in ('A', 'B'):		# the VFO shack puts it on next time it's opened
+				self.bm.set_pref(f'vfo {self.radio.currentText()}', v)
 			if v != self.vfo_on:		# the controls still show the other VFO for a moment
 				self.vfo_on, self.vfo_t = v, time.monotonic()
 		elif k == 'pwr' and not self.pwr.isSliderDown():		# CI-V RF power 0-255, None when the radio sends junk
