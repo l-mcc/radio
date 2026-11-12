@@ -1895,7 +1895,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		try:
 			with open(HERE / f'{self.kind.lower()}.log', 'a') as f:
 				if self.logged != self.kind:
-					f.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC  {self.kind}{f" {self.hf} Hz {'xara' if self.vx else 'xara-monitor'}" if self.kind == 'VARA' else ''} ---\n")
+					f.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC  {self.kind}{self.vlabel()} ---\n")
 					self.logged = self.kind
 				f.write(txt)
 		except OSError as e:
@@ -1924,6 +1924,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	'''-------------------------------------------------------------------
 		VARA bandwidth changed: a new xara-monitor if VARA is running
 	-------------------------------------------------------------------'''
+
+	def vlabel(self):		# the log header's VARA part: bandwidth and which program
+		return f" {self.hf} Hz {'xara' if self.vx else 'xara-monitor'}" if self.kind == 'VARA' else ''
 
 	def vara_by(self, vx):		# xara-monitor or xara: the other one starts now if VARA is running
 		self.vx = vx
