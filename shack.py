@@ -7,7 +7,7 @@ from pathlib import Path
 import serial
 from PyQt6.QtCore import pyqtSignal, QEvent, QPointF, QProcess, QProcessEnvironment, QRect, QSize, Qt, QTimer, QUrl
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
-from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QMainWindow, QMenu, QMessageBox,
+from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
 import cat, civ, styles
@@ -59,7 +59,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. CI-V can't read which one the radio is on, so opening the IC-705 or Xiegu puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. Double-click one with Modem on Transmit: Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. Right-click > Stop Pat gives up on a connect. Pat's own page (mailbox, compose: pat http) is started with the modem if it isn't running already, and closed with the radio if shack started it; right-click > Pat mailbox opens it in the browser. BUSY in the bottom left corner of the window is red while xara (the modem) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. CI-V can't read which one the radio is on, so opening the IC-705 or Xiegu puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. To send mail: right-click > Compose a message (To, Cc, Subject, text; Put in the outbox), then double-click a gateway (or right-click it > Connect): shack sets Modem to Transmit if it isn't, Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. The menu says how many messages are waiting in the outbox. Right-click > Stop Pat gives up on a connect. Right-click a gateway > Add as a Pat alias puts it in Pat's config (connect_aliases, named like ko4hjo-7100.5) for pat connect and Pat's own Connect list; it shows with a ★ here, and the same menu item removes it. Right-click > Pat mailbox starts Pat's own page (pat http) if it isn't running and opens it in the browser, to read mail; shack closes it with the radio if it started it. BUSY in the bottom left corner of the window is red while xara (the modem) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
@@ -2223,6 +2223,81 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	everything it prints goes to xara.log next to shack.py (a new file each start) and to add(text); gone(why) if it stops by itself
 ==================================================================================================================================================='''
 
+PATCONF = Path.home() / '.config/pat/config.json'		# Pat's config: mycall, http_addr, connect_aliases
+
+def pat_conf():		# Pat's config as a dict, {} if it can't be read
+	try:
+		return json.loads(PATCONF.read_text())
+	except (OSError, ValueError):
+		return {}
+
+def outbox():		# messages waiting in Pat's outbox (~/.local/share/pat/mailbox/<mycall>/out)
+	call = pat_conf().get('mycall', '')
+	return len(list((Path.home() / '.local/share/pat/mailbox' / call / 'out').glob('*.b2f'))) if call else 0
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
+class Compose(QDialog):		# a Winlink message into Pat's outbox: pat compose with the body on stdin (not a terminal: no prompts); the next connect sends it
+	def __init__(self, parent, to=''):
+		super().__init__(parent, windowTitle='Winlink message')
+		self.to = QLineEdit(to, placeholderText='call or email address; several: comma or space between')
+		self.cc = QLineEdit(placeholderText='optional')
+		self.subj = QLineEdit()
+		self.body = QPlainTextEdit()
+		self.body.setFont(QFont('DejaVu Sans Mono', 11))
+		self.body.setMinimumSize(560, 260)
+		send = QPushButton('Put in the outbox', default=True)
+		send.clicked.connect(self.post)
+		cancel = QPushButton('Cancel')
+		cancel.clicked.connect(self.reject)
+		g = QGridLayout(self)
+		for row, (name, w) in enumerate((('To', self.to), ('Cc', self.cc), ('Subject', self.subj))):
+			g.addWidget(QLabel(name), row, 0)
+			g.addWidget(w, row, 1)
+		g.addWidget(self.body, 3, 0, 1, 2)
+		h = QHBoxLayout()
+		h.addStretch()
+		h.addWidget(cancel)
+		h.addWidget(send)
+		g.addLayout(h, 4, 0, 1, 2)
+		(self.subj if to else self.to).setFocus()
+		return
+	# __init__
+
+	@staticmethod
+	def addrs(s):
+		return [a for a in re.split(r'[,;\s]+', s) if a]
+
+	def post(self):
+		to = self.addrs(self.to.text())
+		if not to:
+			return QMessageBox.warning(self, 'Winlink message', 'Who is it to?')
+		args = ['compose', '-s', self.subj.text().strip() or '<No subject>', *(x for c in self.addrs(self.cc.text()) for x in ('-c', c)), *to]
+		p = QProcess()
+		p.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+		p.start('pat', args)
+		if not p.waitForStarted(5000):
+			return QMessageBox.warning(self, 'Winlink message', f"Couldn't run pat: {p.errorString()}")
+		p.write(self.body.toPlainText().encode())
+		p.closeWriteChannel()
+		p.waitForFinished(15000)
+		said = bytes(p.readAll()).decode(errors='replace').strip()
+		log.info(f'pat compose: {said}')
+		if 'Message posted' not in said:
+			return QMessageBox.warning(self, 'Winlink message', f'pat compose said:\n\n{said or "nothing"}')
+		self.accept()
+		return
+	# post
+# class Compose
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
 class Status(QStatusBar):		# the window's bottom line: BUSY at the left corner, always there; messages in a label beside it (QStatusBar's own message would hide BUSY while it shows)
 	def __init__(self):
 		super().__init__()
@@ -2493,6 +2568,7 @@ class Shack(QMainWindow):
 		self.gws.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.gws.customContextMenuRequested.connect(self.gw_menu)
 		self.gwlist, self.gwband, self.pat, self.rmsp = [], None, None, None		# rows shown, their band, a running pat connect, a running rms.py
+		self.gwwait, self.gwnext = QTimer(interval=500, timeout=self.gw_ready), None		# a connect waiting for the modem: (call, url, give up at)
 		self.patw = None		# pat http when shack started it
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
 		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
@@ -2928,7 +3004,6 @@ class Shack(QMainWindow):
 		what = f"TRANSMIT, drive {v['drive']} dB, PCM {self.pcm.value()}" if tx else 'listen only'
 		self.dec.add(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC  xara, {what}, {self.dec.hf} Hz, {self.card} ---\n")
 		self.mdm = Modem(self.card, self.dec.hf, self.dec.add, self.modem_gone, tx, self.set_busy)
-		self.pat_http()		# Pat's page for the mail, if it isn't up
 		self.set_busy(False)
 		self.show_tx(bool(tx))
 		self.modemst.setText(f"xara {'TRANSMIT enabled' if tx else 'listening'}, {self.card}   (xara.log)")
@@ -3016,20 +3091,26 @@ class Shack(QMainWindow):
 		elif not db.is_file():
 			self.statusBar().showMessage('No gateway list yet: right-click the Gateways tab > Download a fresh list', 8000)
 		self.gws.setRowCount(len(self.gwlist))
+		names = {u: n for n, u in pat_conf().get('connect_aliases', {}).items()}		# url: alias
 		for r, (call, khz, bw, miles, brg, since, url) in enumerate(self.gwlist):
 			old = since is None or since > 6
+			if url in names:
+				call = '★ ' + call
 			for c, x in enumerate((call, f'{khz:.1f}', bw, f'{miles:.0f}', f'{brg:.0f}°', '?' if since is None else f'{since} h')):
 				it = QTableWidgetItem(x)
 				if c:
 					it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 				if old:
 					it.setForeground(QColor('#b0b0b0'))
+				if url in names:
+					it.setToolTip(f'Pat alias: {names[url]}')
 				self.gws.setItem(r, c, it)
 		return
 	# show_gws
 
 	'''-------------------------------------------------------------------
-		double-click: pat connect <the gateway's URL>. Pat moves the dial (through the rigctld port) and puts it back; what it prints goes to the text box
+		double-click or right-click > Connect: pat connect <the gateway's URL>. Pat moves the dial (through the rigctld port) and puts it back; what it prints goes to the text box.
+		Modem not on Transmit: shack sets it and connects once xara's ports answer (a VFO change can reload the list, so the gateway is kept, not its row)
 	-------------------------------------------------------------------'''
 
 	def gw_pick(self, r):
@@ -3037,12 +3118,39 @@ class Shack(QMainWindow):
 		why = None
 		if self.pat:
 			why = 'Pat is already connecting: right-click > Stop Pat to give up on that one'
-		elif not (self.mdm and self.txrow.isVisible()):
-			why = 'Set Modem to Transmit first: Pat needs the modem to call the gateway'
 		elif not shutil.which('pat'):
 			why = "Can't find pat on the PATH"
+		elif not isinstance(self.rig, (civ.Rig, cat.Rig)):
+			why = 'Pat needs a transceiver open here'
 		if why:
 			return self.statusBar().showMessage(why, 8000)
+		self.gwwait.stop()
+		if self.mdm and self.txrow.isVisible():
+			return self.gw_connect(call, url)
+		self.set_modem('Transmit')
+		if self.modem.currentText() != 'Transmit':		# refused at once: modemst says why
+			return self.statusBar().showMessage(f'No connect: {self.modemst.text()}', 8000)
+		self.gwnext = (call, url, time.monotonic() + 15)
+		self.gwwait.start()
+		self.statusBar().showMessage(f'Starting the modem to call {call}…', 5000)
+		return
+	# gw_pick
+
+	def gw_ready(self):		# every 0.5 s while the modem starts for a connect
+		call, url, until = self.gwnext
+		if self.modem.currentText() != 'Transmit':		# modem_go refused (split, mode, VFO) or xara stopped
+			self.gwwait.stop()
+			return self.statusBar().showMessage(f'No connect to {call}: {self.modemst.text()}', 8000)
+		if self.mdm and self.txrow.isVisible() and Modem.busy():		# xara listens on its ports
+			self.gwwait.stop()
+			return self.gw_connect(call, url)
+		if time.monotonic() > until:
+			self.gwwait.stop()
+			self.statusBar().showMessage(f'No connect to {call}: xara never answered on its ports', 8000)
+		return
+	# gw_ready
+
+	def gw_connect(self, call, url):
 		self.set_tune(False)		# Pat needs xara's command port
 		self.dec.add(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC  pat connect {url} ---\n")
 		self.pat = QProcess()
@@ -3053,7 +3161,7 @@ class Shack(QMainWindow):
 		self.tuneb.setEnabled(False)
 		self.statusBar().showMessage(f'Pat: connecting to {call}', 5000)
 		return
-	# gw_pick
+	# gw_connect
 
 	def pat_out(self):
 		if self.pat:
@@ -3069,13 +3177,13 @@ class Shack(QMainWindow):
 	# pat_done
 
 	'''-------------------------------------------------------------------
-		Pat's own page (pat http: mailbox, compose), started with the modem if it isn't already running, as JS8Call is with JS8;
+		Pat's own page (pat http: mailbox), started from the Gateways menu if it isn't already running;
 		one shack started is closed with the radio, one you started yourself is left alone. show: open the page in the browser
 	-------------------------------------------------------------------'''
 
 	def pat_http(self, show=False):
 		try:
-			addr = json.loads((Path.home() / '.config/pat/config.json').read_text()).get('http_addr') or 'localhost:8080'
+			addr = json.loads(PATCONF.read_text()).get('http_addr') or 'localhost:8080'
 		except (OSError, ValueError):
 			addr = 'localhost:8080'
 		host, port = addr.rpartition(':')[::2]
@@ -3134,13 +3242,32 @@ class Shack(QMainWindow):
 
 	def gw_menu(self, pos):
 		menu = QMenu(self)
+		r = self.gws.rowAt(pos.y())
+		g = self.gwlist[r] if 0 <= r < len(self.gwlist) else None
+		aliases = pat_conf().get('connect_aliases', {})
+		if g:
+			conn = menu.addAction(f'Connect to {g[0]}')
+			conn.setEnabled(not self.pat)
+			named = [n for n, u in aliases.items() if u == g[6]]
+			ali = menu.addAction(f'Remove Pat alias {named[0]}' if named else f'Add {g[0]} as a Pat alias')
+			menu.addSeparator()
+		n = outbox()
+		comp = menu.addAction('Compose a message…' + (f'   ({n} in the outbox)' if n else ''))
 		stop = menu.addAction('Stop Pat')
 		stop.setEnabled(bool(self.pat))
 		box = menu.addAction('Pat mailbox (browser)')
 		fresh = menu.addAction('Download a fresh list' if not self.rmsp else 'Downloading…')
 		fresh.setEnabled(not self.rmsp)
 		act = menu.exec(self.gws.viewport().mapToGlobal(pos))
-		if act == stop:
+		if not act:
+			return
+		if g and act == conn:
+			self.gw_pick(r)
+		elif g and act == ali:
+			self.gw_alias(g, named[0] if named else None)
+		elif act == comp:
+			self.compose()
+		elif act == stop:
 			self.pat_stop()
 		elif act == box:
 			self.pat_http(True)
@@ -3152,6 +3279,50 @@ class Shack(QMainWindow):
 			self.statusBar().showMessage('Downloading the gateway list…')
 		return
 	# gw_menu
+
+	'''-------------------------------------------------------------------
+		a gateway as one of Pat's connect_aliases (named call-dial kHz: ko4hjo-7100.5), or that alias removed. Pat reads its config at start:
+		a pat http shack started is started again so its Connect list has it
+	-------------------------------------------------------------------'''
+
+	def gw_alias(self, g, old):
+		c = pat_conf()
+		if not c:
+			return self.statusBar().showMessage(f"Can't read {PATCONF}", 8000)
+		al = c.setdefault('connect_aliases', {})
+		name = old or f'{g[0].lower()}-{g[1]:.1f}'
+		if old:
+			del al[old]
+		else:
+			al[name] = g[6]
+		tmp = PATCONF.with_suffix('.shack')
+		try:
+			tmp.write_text(json.dumps(c, indent=2) + '\n')
+			os.replace(tmp, PATCONF)
+		except OSError as e:
+			return self.statusBar().showMessage(f"Can't write {PATCONF}: {e.strerror}", 8000)
+		log.info(f"pat alias {'removed' if old else 'added'}: {name} {g[6]}")
+		if self.patw:
+			self.pat_quit()
+			self.pat_http()
+		self.show_gws()
+		self.statusBar().showMessage(f"Pat alias {name} {'removed' if old else 'added: pat connect ' + name}", 8000)
+		return
+	# gw_alias
+
+	'''-------------------------------------------------------------------
+		right-click > Compose: the message goes to Pat's outbox; the next connect sends it. To is remembered
+	-------------------------------------------------------------------'''
+
+	def compose(self):
+		if not shutil.which('pat'):
+			return self.statusBar().showMessage("Can't find pat on the PATH", 8000)
+		d = Compose(self, self.bm.pref('pat to', ''))
+		if d.exec():
+			self.bm.set_pref('pat to', d.to.text().strip())
+			self.statusBar().showMessage(f'In the outbox ({outbox()} waiting): connect to a gateway to send', 8000)
+		return
+	# compose
 
 	def rms_done(self, code, status):
 		err = bytes(self.rmsp.readAllStandardError()).decode(errors='replace').strip().splitlines()
@@ -3169,6 +3340,7 @@ class Shack(QMainWindow):
 
 	def modem_off(self):
 		self.mgen += 1
+		self.gwwait.stop()
 		self.modemst.setStyleSheet('')
 		self.set_tune(False)
 		self.show_tx(False)
