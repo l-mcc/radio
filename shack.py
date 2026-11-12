@@ -66,7 +66,7 @@ HELP = '''
 <p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit; switching here, shack puts back that VFO's Preamp, ATT, Roofing, AGC, NB and NR as they were when you left it, which the radio's own A/B key does by itself but a switch over CAT doesn't; the first switch to a VFO after opening keeps the current settings), mode, volume, RF gain, AGC, Preamp (IPO, AMP1, AMP2), ATT (off, 6, 12, 18 dB), Roofing (the radio's R FIL: 12 kHz, 3 kHz, 500 Hz), Display (the radio's screen contrast and brightness and its LED brightness, 0-20), NB and NR with their levels, S-meter, power and PTT; bookmarks keep Preamp, ATT and Roofing too. Scope sets the radio's own scope (the picture stays on the radio's screen): display mode (3DSS or waterfall, L/N/S size; Center, Cursor or Fix, the Fix edges set on the radio), span, Ref level (-30 to +30 dB) and speed; they follow the radio when you change them there. Right-click the Scope line (its label or between the boxes) for Peak, Color, RBW, Marker and Hold. Power goes from 5 W up to what the radio's own menu allows (TX GENERAL > HF / 50M MAX POWER, and AM MAX POWER in AM); the slider stops there, and its tooltip says the limit. Raise it in the radio's menu. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
 
 <h3>TH-D75</h3>
-<p>Kenwood handheld on its USB-C cable (receive only from here, so far): frequency, mode, signal and bookmarks. VFO A and VFO B are the radio's band A and band B; the one its keys work on is lit, and tuning from here goes to that one. Opening it puts the radio in single-band mode, so you hear only the VFO that's lit (in the radio's dual-band mode both play at once; [F], [A/B] on the radio switches). Band A covers 136-174, 216-260 and 410-470 MHz in FM and DV only; band B is the wide receiver, 0.1-524 MHz in every mode (broadcast FM: VFO B, WBFM). The radio tunes in steps: a frequency that isn't on the band's step gets the widest step it sits on (25 kHz for 162.475, say), else the nearest 5 kHz; what the radio ended up on is what shows. Signal is the radio's own 0-5 bars. If band B is silent, check the radio's volume balance (menu 910: MENU, 9, 1, 0). The radio's TNC must not be in KISS mode: its port carries packets then and stops answering.</p>
+<p>Kenwood handheld on its USB-C cable (receive only from here, so far): frequency, mode, volume, squelch, backlight, signal and bookmarks. Volume is the radio's own (its VOL ring shows up here too; 1.00 = 200 on the radio's scale); Squelch is 0-5 for the VFO that's lit (0 = always open); Backlight: On keeps the display lit. VFO A and VFO B are the radio's band A and band B; the one its keys work on is lit, and tuning from here goes to that one. Opening it puts the radio in single-band mode, so you hear only the VFO that's lit (in the radio's dual-band mode both play at once; [F], [A/B] on the radio switches). Band A covers 136-174, 216-260 and 410-470 MHz in FM and DV only; band B is the wide receiver, 0.1-524 MHz in every mode (broadcast FM: VFO B, WBFM). The radio tunes in steps: a frequency that isn't on the band's step gets the widest step it sits on (25 kHz for 162.475, say), else the nearest 5 kHz; what the radio ended up on is what shows. Signal is the radio's own 0-5 bars. If band B is silent, check the radio's volume balance (menu 910: MENU, 9, 1, 0). The radio's TNC must not be in KISS mode: its port carries packets then and stops answering.</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -2714,6 +2714,11 @@ class Shack(QMainWindow):
 		h.addWidget(self.pwrv)
 		self.vol = QDoubleSpinBox(decimals=2, minimum=0, maximum=1, singleStep=0.02, keyboardTracking=False)
 		self.vol.valueChanged.connect(lambda v: self.rig and self.rig.set('v', v))
+		self.sq = QSpinBox(minimum=0, maximum=5, keyboardTracking=False, toolTip='The radio\'s squelch for this VFO: 0 = always open, 5 = strong signals only')		# TH-D75
+		self.sq.valueChanged.connect(lambda v: self.rig and self.rig.set('sq', v))
+		self.lamp = QComboBox(toolTip='The radio\'s display backlight')
+		self.lamp.addItems(d75.LAMPS)
+		self.lamp.activated.connect(lambda i: self.rig and self.rig.set('lamp', i))
 		self.rfg = QSpinBox(minimum=0, maximum=100, singleStep=5, suffix=' %', keyboardTracking=False, toolTip='The radio\'s RF gain; 100 % = full gain')
 		self.rfg.valueChanged.connect(lambda v: self.rig and self.rig.set('rfg', round(v * 2.55)))
 		self.vfo = {}		# A, B: which one the radio listens on (CI-V can't ask the radio: shack selects the one it last used when the radio is opened)
@@ -2891,7 +2896,7 @@ class Shack(QMainWindow):
 		self.labels = {}		# control: its row label
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
-		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof), ('Display', self.disp),
+		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('Squelch', self.sq), ('Backlight', self.lamp), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof), ('Display', self.disp),
 				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow), ('TX level', self.txrow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
@@ -2943,7 +2948,7 @@ class Shack(QMainWindow):
 		top.setLayout(main)
 		self.setCentralWidget(top)
 
-		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.smeter, self.swr, self.power, self.pttrow, self.modemrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.sq, self.lamp, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.smeter, self.swr, self.power, self.pttrow, self.modemrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -3047,7 +3052,7 @@ class Shack(QMainWindow):
 	# open_cat
 
 	'''-------------------------------------------------------------------
-		open the Kenwood TH-D75: dial, mode, bands A/B and its signal bars (no audio, PTT or decoders yet)
+		open the Kenwood TH-D75: dial, mode, bands A/B, volume, squelch, backlight and its signal bars (no sound card, PTT or decoders yet)
 	-------------------------------------------------------------------'''
 
 	def open_d75(self, name):
@@ -3059,7 +3064,7 @@ class Shack(QMainWindow):
 		except serial.SerialException as e:
 			return self.oops(f"Found the {name} but couldn't open it.\n\n{e}\n\nIs another program using it?")
 		self.smeter.setRange(0, 5)
-		self.show_radio(name, self.rig.modes, d75.TOP, (self.freq, self.vforow, self.mode, self.smeter, self.save, self.tabs))
+		self.show_radio(name, self.rig.modes, d75.TOP, (self.freq, self.vforow, self.mode, self.vol, self.sq, self.lamp, self.smeter, self.save, self.tabs))
 		self.show_bms()
 		return
 	# open_d75
@@ -3813,6 +3818,10 @@ class Shack(QMainWindow):
 				quiet(self.nbdb, self.nbdb.setValue, v)
 		elif k == 'v':
 			quiet(self.vol, self.vol.setValue, v)
+		elif k == 'sq':		# TH-D75 squelch 0-5
+			quiet(self.sq, self.sq.setValue, v)
+		elif k == 'lamp' and 0 <= v < self.lamp.count():
+			quiet(self.lamp, self.lamp.setCurrentIndex, v)
 		elif k == 'vol':		# CI-V AF level 0-255
 			quiet(self.vol, self.vol.setValue, v / 255)
 		elif k in ('nbl', 'nrl'):		# CI-V NB / NR level 0-255

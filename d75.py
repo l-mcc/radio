@@ -13,6 +13,8 @@ RMODES = {v: k for k, v in MODES.items()}
 STEPS = [5000, 6250, 25000 / 3, 9000, 10000, 12500, 15000, 20000, 25000, 30000, 50000, 100000]		# FO field 3, one hex digit (2 = 8.33 kHz)
 FINE = [20, 100, 500, 1000]		# FO field 7, used while field 6 (fine mode) is 1
 PICK = (11, 10, 9, 8, 7, 6, 5, 4, 1, 0)		# steps tried, widest first, for a frequency that isn't on the band's own step (never 8.33 or 9 kHz)
+LAMPS = ['Manual', 'On', 'Auto', 'Auto (DC-IN)']		# LC 0-3: the display's backlight
+AGMAX = 200		# AG: the VOL ring's number. 45 and 169 seen; the top is a guess
 TOP = 524		# MHz: band B's top; band A is 136-174, 216-260 and 410-470 only
 
 '''-------------------------------------------------------------------
@@ -127,6 +129,12 @@ class Rig:		# Kenwood TH-D75 (TH-D74 command set): ASCII lines ending in CR, one
 				self.emit('mode', self.mode)
 		elif cmd == 'SM' and len(f) == 2 and f[0] == self.band and f[1].isdigit():		# 0-5 bars
 			self.emit('bars', int(f[1]))
+		elif cmd == 'AG' and f[0].isdigit():		# one volume for both bands -> shack's 0-1
+			self.emit('v', min(int(f[0]) / AGMAX, 1.0))
+		elif cmd == 'SQ' and len(f) == 2 and f[0] == self.band and f[1].isdigit():		# 0-5, each band its own
+			self.emit('sq', int(f[1]))
+		elif cmd == 'LC' and f[0].isdigit():
+			self.emit('lamp', int(f[0]))
 		return
 	# dispatch
 
@@ -139,8 +147,8 @@ class Rig:		# Kenwood TH-D75 (TH-D74 command set): ASCII lines ending in CR, one
 			return
 		self.q.put(f'SM {self.band}')
 		if n % 4 == 0:		# every second, so the radio's own knob and keys show up too
-			self.q.put('BC')
-			self.q.put(f'FO {self.band}')
+			for c in ('BC', f'FO {self.band}', 'AG', f'SQ {self.band}', 'LC'):
+				self.q.put(c)
 		return
 	# poll
 
@@ -199,6 +207,12 @@ class Rig:		# Kenwood TH-D75 (TH-D74 command set): ASCII lines ending in CR, one
 				self.want[k] = v
 			if first:		# one write carries both
 				self.q.put(self.retune)
+		elif k == 'v':		# shack's volume 0-1
+			self.q.put(f'AG {round(max(0.0, min(1.0, float(v))) * AGMAX):03d}')
+		elif k == 'sq' and self.band:
+			self.q.put(f'SQ {self.band},{max(0, min(5, int(v)))}')
+		elif k == 'lamp':		# index into LAMPS
+			self.q.put(f'LC {int(v)}')
 		elif k == 'vfo' and v in ('A', 'B'):		# FO only writes to this band, so tuning follows it
 			self.q.put(lambda: self.to_band(v))
 		return
