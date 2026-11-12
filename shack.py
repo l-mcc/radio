@@ -10,7 +10,7 @@ from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, Q
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
-import cat, civ, styles, thd
+import cat, civ, d75, styles
 try:		# decoders need numpy; without it shack still runs, the Decoder row says why
 	import numpy as np
 	import decode
@@ -2962,7 +2962,7 @@ class Shack(QMainWindow):
 		elif name == 'RSPdx':
 			self.open_rx()
 		elif name == 'TH-D75':
-			self.open_thd(name)
+			self.open_d75(name)
 		return
 	# pick
 
@@ -3050,19 +3050,19 @@ class Shack(QMainWindow):
 		open the Kenwood TH-D75: dial, mode, bands A/B and its signal bars (no audio, PTT or decoders yet)
 	-------------------------------------------------------------------'''
 
-	def open_thd(self, name):
-		dev = thd.find_dev()
+	def open_d75(self, name):
+		dev = d75.find_dev()
 		if not dev:
 			return self.oops(f"Can't find the {name}.\n\nIs it plugged in and turned on?")
 		try:
-			self.rig = thd.Rig(dev, self.got.emit)
+			self.rig = d75.Rig(dev, self.got.emit)
 		except serial.SerialException as e:
 			return self.oops(f"Found the {name} but couldn't open it.\n\n{e}\n\nIs another program using it?")
 		self.smeter.setRange(0, 5)
-		self.show_radio(name, self.rig.modes, thd.TOP, (self.freq, self.vforow, self.mode, self.smeter, self.save, self.tabs))
+		self.show_radio(name, self.rig.modes, d75.TOP, (self.freq, self.vforow, self.mode, self.smeter, self.save, self.tabs))
 		self.show_bms()
 		return
-	# open_thd
+	# open_d75
 
 	'''-------------------------------------------------------------------
 		the Scope line: the 705's waterfall controls, or the FTdx10's settings for its own scope
@@ -3602,11 +3602,11 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def poll(self):
-		if not isinstance(self.rig, (civ.Rig, cat.Rig, thd.Rig)):		# rspdx pushes its state; the others need asking
+		if not isinstance(self.rig, (civ.Rig, cat.Rig, d75.Rig)):		# rspdx pushes its state; the others need asking
 			return
 		if time.monotonic() - self.rig.heard > 3:		# polled 4x a second, so 3 s of silence = gone
-			return self.oops('The radio stopped answering.\n\nUnplugged or turned off?' + (' Or its TNC is in KISS mode.' if isinstance(self.rig, thd.Rig) else ''))
-		if isinstance(self.rig, thd.Rig):
+			return self.oops('The radio stopped answering.\n\nUnplugged or turned off?' + (' Or its TNC is in KISS mode.' if isinstance(self.rig, d75.Rig) else ''))
+		if isinstance(self.rig, d75.Rig):
 			if time.monotonic() - self.rig.last_set > 0.5:
 				self.rig.poll(self.n)
 				self.n += 1
@@ -3983,7 +3983,7 @@ class Shack(QMainWindow):
 			return self.statusBar().showMessage(f"The {self.radio.currentText()} can't tune {b['hz'] / 1e6:.6f} {b['mode']}", 5000)
 		self.bm.picked(b)
 		v = (b['settings'].get(self.radio.currentText()) or {}).get('vfo')		# the VFO it was saved on
-		if v in ('A', 'B') and isinstance(self.rig, (civ.Rig, cat.Rig, thd.Rig)) and v != self.rig.vfo and not self.mdm:		# the modem stays on VFO A
+		if v in ('A', 'B') and isinstance(self.rig, (civ.Rig, cat.Rig, d75.Rig)) and v != self.rig.vfo and not self.mdm:		# the modem stays on VFO A
 			self.pick_vfo(v)
 			rig = self.rig
 			QTimer.singleShot(400, lambda: self.rig is rig and self.bm_tune(b))		# once the radio is on that VFO (the FTdx10 tunes the VFO it last reported)
@@ -4035,7 +4035,7 @@ class Shack(QMainWindow):
 	def settings(self):
 		if isinstance(self.rig, Rspdx):
 			return self.rig.settings()
-		if isinstance(self.rig, thd.Rig):		# the band it's on, nothing else yet
+		if isinstance(self.rig, d75.Rig):		# the band it's on, nothing else yet
 			return {'vfo': self.rig.vfo}
 		s = {'v': self.vol.value(), 'rfg': self.rfg.value(), 'nbl': self.lvl['nb'].value(), 'nrl': self.lvl['nr'].value(), **{k: int(self.sw[k].isChecked()) for k in ('nb', 'nr')}}
 		if isinstance(self.rig, cat.Rig):

@@ -5,7 +5,7 @@ import glob, logging, queue, threading, time
 
 import serial
 
-log = logging.getLogger('shack.thd')		# child of shack's logger: lands in shack.log
+log = logging.getLogger('shack.d75')		# child of shack's logger: lands in shack.log
 
 PORT = '*JVCKENWOOD_TH-D75*'		# by-id pattern: the radio's USB-C port, a plain ttyACM
 MODES = {'NBFM': '0', 'DV': '1', 'AM': '2', 'LSB': '3', 'USB': '4', 'CW': '5', 'FM-N': '6', 'DR': '7', 'WBFM': '8', 'CW-R': '9'}		# FO field 5 / MD; names as civ.py and cat.py have them
@@ -44,6 +44,7 @@ class Rig:		# Kenwood TH-D75 (TH-D74 command set): ASCII lines ending in CR, one
 		self.band, self.vfo, self.mhz, self.mode = None, '', 0.0, ''
 		self.tx = 0		# receive only from shack, so far
 		self.want, self.lock = {}, threading.Lock()		# mhz, mode: asked for from shack, not sent yet
+		self.seen = {}		# command: its last reply, so the log gets each exchange once, not every poll
 		self.modes = list(MODES)
 		self.last_set = 0.0
 		self.alive, self.heard = True, time.monotonic()
@@ -79,6 +80,15 @@ class Rig:		# Kenwood TH-D75 (TH-D74 command set): ASCII lines ending in CR, one
 	-------------------------------------------------------------------'''
 
 	def ask(self, cmd):
+		r = self.talk(cmd)
+		note = 'ok' if cmd[:2] == 'SM' and r not in ('?', 'N', None) else r		# the meter moves all the time
+		if self.seen.get(cmd, '') != note:
+			self.seen[cmd] = note
+			log.debug(f'{cmd!r} -> {r!r}')
+		return r
+	# ask
+
+	def talk(self, cmd):
 		self.ser.write((cmd + '\r').encode())
 		end = time.monotonic() + 0.5
 		while time.monotonic() < end:
@@ -95,7 +105,7 @@ class Rig:		# Kenwood TH-D75 (TH-D74 command set): ASCII lines ending in CR, one
 			if line[:2] == cmd[:2]:
 				return line
 		return None
-	# ask
+	# talk
 
 	'''-------------------------------------------------------------------
 		one reply -> emits to Shack
@@ -189,7 +199,15 @@ class Rig:		# Kenwood TH-D75 (TH-D74 command set): ASCII lines ending in CR, one
 			if first:		# one write carries both
 				self.q.put(self.retune)
 		elif k == 'vfo' and v in ('A', 'B'):		# FO only writes to this band, so tuning follows it
-			self.q.put(f"BC {'AB'.index(v)}")
+			self.q.put(lambda: self.to_band(v))
 		return
 	# set
+
+	def to_band(self, v):
+		r = self.ask(f"BC {'AB'.index(v)}")
+		if r in ('?', 'N', None):
+			self.emit('error', f'The radio refused the switch to band {v}')
+			self.emit('vfo', self.vfo)		# the button back to where the radio is
+		return
+	# to_band
 # class Rig

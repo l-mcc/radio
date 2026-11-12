@@ -9,7 +9,7 @@ Developed on Debian 12 (bookworm). Other recent Debian/Ubuntu/Mint should work.
 | `shack.py` | the program: radio control, waterfall, decoders, bookmarks (PyQt6) |
 | `civ.py` | Icom CI-V engine (IC-705, Xiegu X6200), PTT port for xara |
 | `cat.py` | Yaesu CAT engine (FTdx10) |
-| `thd.py` | Kenwood TH-D75 engine (receive only so far) |
+| `d75.py` | Kenwood TH-D75 engine (receive only so far) |
 | `decode.py` | RTTY, CW, PSK31, Olivia/Contestia decoders (used by shack; also runs on its own) |
 | `rspdx` (`*.cpp`) | C++ receiver for the SDRplay RSPdx, run by shack. Only needed if you have one |
 | `pvara.py` | VARA log (`vara.log`) -> one readable line per transmission |
