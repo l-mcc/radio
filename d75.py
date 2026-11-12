@@ -49,6 +49,7 @@ class Rig:		# Kenwood TH-D75 (TH-D74 command set): ASCII lines ending in CR, one
 		self.last_set = 0.0
 		self.alive, self.heard = True, time.monotonic()
 		threading.Thread(target=self.worker, daemon=True).start()
+		self.q.put('DL 1')		# single band: only the band that's picked is heard and shown, as a VFO switch should (dual = both at once)
 		self.q.put('BC')		# which band, before the first frequency read
 		return
 	# __init__
