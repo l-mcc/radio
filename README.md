@@ -9,6 +9,7 @@ Developed on Debian 12 (bookworm). Other recent Debian/Ubuntu/Mint should work.
 | `shack.py` | the program: radio control, waterfall, decoders, bookmarks (PyQt6) |
 | `civ.py` | Icom CI-V engine (IC-705, Xiegu X6200), PTT port for xara |
 | `cat.py` | Yaesu CAT engine (FTdx10) |
+| `thd.py` | Kenwood TH-D75 engine (receive only so far) |
 | `decode.py` | RTTY, CW, PSK31, Olivia/Contestia decoders (used by shack; also runs on its own) |
 | `rspdx` (`*.cpp`) | C++ receiver for the SDRplay RSPdx, run by shack. Only needed if you have one |
 | `pvara.py` | VARA log (`vara.log`) -> one readable line per transmission |
@@ -22,6 +23,7 @@ Pick the radio in shack's **Radio** list. shack finds it by its USB name under `
 - **Icom IC-705**: USB cable. CI-V USB baud 115200. Band scope / waterfall in shack.
 - **Xiegu X6200**: USB cable (CI-V on the second serial port; the first is the radio's own console).
 - **Yaesu FTdx10**: USB cable, CAT rate 38400.
+- **Kenwood TH-D75**: USB-C cable. Dial, mode, bands A/B and bookmarks so far; TNC not in KISS mode.
 - **SDRplay RSPdx**: needs the C++ part built (see the end).
 
 Receive audio for the decoders comes from the radio's USB sound card (ALSA). Nothing to set up if the radio is plugged in.

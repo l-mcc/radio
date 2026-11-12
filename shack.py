@@ -10,7 +10,7 @@ from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, Q
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
-import cat, civ, styles
+import cat, civ, styles, thd
 try:		# decoders need numpy; without it shack still runs, the Decoder row says why
 	import numpy as np
 	import decode
@@ -23,7 +23,7 @@ log = logging.getLogger('shack')		# set up in main by utils.setup_logging
 
 HELP = '''
 <h3>Radio</h3>
-<p>Pick IC-705, RSPdx, Xiegu x6200 or FTdx10 to open it, none to close it. Only one radio is open at a time; only its own controls are shown. A greyed-out one doesn't apply in the current mode (Bandwidth outside SSB, for example).</p>
+<p>Pick IC-705, RSPdx, Xiegu x6200, FTdx10 or TH-D75 to open it, none to close it. Only one radio is open at a time; only its own controls are shown. A greyed-out one doesn't apply in the current mode (Bandwidth outside SSB, for example).</p>
 
 <h3>Frequency</h3>
 <p>Like the waterfall page: the mouse wheel over any digit tunes that digit (the dimmed leading zeros too, for big jumps); clicking a digit's top half steps it up, its bottom half down. Arrow keys: left/right picks a digit, up/down tunes it. Or just type a frequency in MHz (7.074) and press Enter; Esc cancels. The radio's own changes don't overwrite what you're typing.</p>
@@ -64,6 +64,9 @@ HELP = '''
 
 <h3>FTdx10</h3>
 <p>Yaesu CAT on the radio's USB port (the first of its two serial ports, 38400 baud: the radio's CAT-1 RATE). Like the IC-705 without Filter, SWR and Scope: frequency, VFO A/B (read from the radio, so the one it's on is lit; switching here, shack puts back that VFO's Preamp, ATT, Roofing, AGC, NB and NR as they were when you left it, which the radio's own A/B key does by itself but a switch over CAT doesn't; the first switch to a VFO after opening keeps the current settings), mode, volume, RF gain, AGC, Preamp (IPO, AMP1, AMP2), ATT (off, 6, 12, 18 dB), Roofing (the radio's R FIL: 12 kHz, 3 kHz, 500 Hz), Display (the radio's screen contrast and brightness and its LED brightness, 0-20), NB and NR with their levels, S-meter, power and PTT; bookmarks keep Preamp, ATT and Roofing too. Scope sets the radio's own scope (the picture stays on the radio's screen): display mode (3DSS or waterfall, L/N/S size; Center, Cursor or Fix, the Fix edges set on the radio), span, Ref level (-30 to +30 dB) and speed; they follow the radio when you change them there. Right-click the Scope line (its label or between the boxes) for Peak, Color, RBW, Marker and Hold. Power goes from 5 W up to what the radio's own menu allows (TX GENERAL > HF / 50M MAX POWER, and AM MAX POWER in AM); the slider stops there, and its tooltip says the limit. Raise it in the radio's menu. Decoders read its USB sound card (CODEC, the same name as the 705's: plug in one of the two at a time).</p>
+
+<h3>TH-D75</h3>
+<p>Kenwood handheld on its USB-C cable (receive only from here, so far): frequency, mode, signal and bookmarks. VFO A and VFO B are the radio's band A and band B; the one its keys work on is lit, and tuning from here goes to that one. Band A covers 136-174, 216-260 and 410-470 MHz in FM and DV only; band B is the wide receiver, 0.1-524 MHz in every mode (broadcast FM: VFO B, WBFM). The radio tunes in steps: a frequency that isn't on the band's step gets the widest step it sits on (25 kHz for 162.475, say), else the nearest 5 kHz; what the radio ended up on is what shows. Signal is the radio's own 0-5 bars. If band B is silent, check the radio's volume balance (menu 910: MENU, 9, 1, 0). The radio's TNC must not be in KISS mode: its port carries packets then and stops answering.</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -2659,7 +2662,7 @@ class Shack(QMainWindow):
 		self.got.connect(self.on_rig, Qt.ConnectionType.QueuedConnection)		# always via the event loop, never inside a rig callback
 
 		self.radio = QComboBox()
-		self.radio.addItems(['none', 'IC-705', 'RSPdx', 'Xiegu x6200', 'FTdx10'])
+		self.radio.addItems(['none', 'IC-705', 'RSPdx', 'Xiegu x6200', 'FTdx10', 'TH-D75'])
 		self.radio.activated.connect(lambda i: self.pick(self.radio.itemText(i)))
 		self.freq = Freq()
 		self.freq.changed.connect(lambda v: self.rig and self.rig.set('mhz', v))
@@ -2715,7 +2718,7 @@ class Shack(QMainWindow):
 		self.rfg.valueChanged.connect(lambda v: self.rig and self.rig.set('rfg', round(v * 2.55)))
 		self.vfo = {}		# A, B: which one the radio listens on (CI-V can't ask the radio: shack selects the one it last used when the radio is opened)
 		self.vfomem, self.vfo_on, self.vfo_t = {}, None, 0.0		# FTdx10: each VFO's settings as last seen, the VFO it reports, when that last changed
-		self.vforow = QWidget(toolTip='The radio\'s VFO A or B. IC-705, Xiegu: CI-V can\'t read which one the radio is on, so shack puts it on the one it last used when you open it')
+		self.vforow = QWidget(toolTip='The radio\'s VFO A or B. IC-705, Xiegu: CI-V can\'t read which one the radio is on, so shack puts it on the one it last used when you open it. TH-D75: its band A and band B')
 		h = QHBoxLayout(self.vforow)
 		h.setContentsMargins(0, 0, 0, 0)
 		for k in ('A', 'B'):
@@ -2958,6 +2961,8 @@ class Shack(QMainWindow):
 			self.open_cat(name)
 		elif name == 'RSPdx':
 			self.open_rx()
+		elif name == 'TH-D75':
+			self.open_thd(name)
 		return
 	# pick
 
@@ -3040,6 +3045,24 @@ class Shack(QMainWindow):
 		self.on_rig('ptt_clients', 0)
 		return
 	# open_cat
+
+	'''-------------------------------------------------------------------
+		open the Kenwood TH-D75: dial, mode, bands A/B and its signal bars (no audio, PTT or decoders yet)
+	-------------------------------------------------------------------'''
+
+	def open_thd(self, name):
+		dev = thd.find_dev()
+		if not dev:
+			return self.oops(f"Can't find the {name}.\n\nIs it plugged in and turned on?")
+		try:
+			self.rig = thd.Rig(dev, self.got.emit)
+		except serial.SerialException as e:
+			return self.oops(f"Found the {name} but couldn't open it.\n\n{e}\n\nIs another program using it?")
+		self.smeter.setRange(0, 5)
+		self.show_radio(name, self.rig.modes, thd.TOP, (self.freq, self.vforow, self.mode, self.smeter, self.save, self.tabs))
+		self.show_bms()
+		return
+	# open_thd
 
 	'''-------------------------------------------------------------------
 		the Scope line: the 705's waterfall controls, or the FTdx10's settings for its own scope
@@ -3579,10 +3602,15 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def poll(self):
-		if not isinstance(self.rig, (civ.Rig, cat.Rig)):		# rspdx pushes its state; only CI-V and CAT need asking
+		if not isinstance(self.rig, (civ.Rig, cat.Rig, thd.Rig)):		# rspdx pushes its state; the others need asking
 			return
 		if time.monotonic() - self.rig.heard > 3:		# polled 4x a second, so 3 s of silence = gone
-			return self.oops('The radio stopped answering.\n\nUnplugged or turned off?')
+			return self.oops('The radio stopped answering.\n\nUnplugged or turned off?' + (' Or its TNC is in KISS mode.' if isinstance(self.rig, thd.Rig) else ''))
+		if isinstance(self.rig, thd.Rig):
+			if time.monotonic() - self.rig.last_set > 0.5:
+				self.rig.poll(self.n)
+				self.n += 1
+			return
 		if isinstance(self.rig, cat.Rig):
 			if time.monotonic() - self.rig.last_set > 0.5:
 				self.rig.poll(self.n)
@@ -3832,6 +3860,9 @@ class Shack(QMainWindow):
 		elif k == 'smeter':
 			self.smeter.setValue(max(-54, min(60, v)))
 			self.smeter.setFormat(sunits(v))
+		elif k == 'bars':		# TH-D75: its 0-5 meter
+			self.smeter.setValue(v)
+			self.smeter.setFormat(f'{v} of 5')
 		elif k == 'meter':		# RSPdx: ADC dBFS, signal dBFS, blanker pulses/s
 			adc, sig, nbr = v
 			self.adc.setValue(round(max(-60, min(0, adc))))
@@ -3952,7 +3983,7 @@ class Shack(QMainWindow):
 			return self.statusBar().showMessage(f"The {self.radio.currentText()} can't tune {b['hz'] / 1e6:.6f} {b['mode']}", 5000)
 		self.bm.picked(b)
 		v = (b['settings'].get(self.radio.currentText()) or {}).get('vfo')		# the VFO it was saved on
-		if v in ('A', 'B') and isinstance(self.rig, (civ.Rig, cat.Rig)) and v != self.rig.vfo and not self.mdm:		# the modem stays on VFO A
+		if v in ('A', 'B') and isinstance(self.rig, (civ.Rig, cat.Rig, thd.Rig)) and v != self.rig.vfo and not self.mdm:		# the modem stays on VFO A
 			self.pick_vfo(v)
 			rig = self.rig
 			QTimer.singleShot(400, lambda: self.rig is rig and self.bm_tune(b))		# once the radio is on that VFO (the FTdx10 tunes the VFO it last reported)
@@ -4004,6 +4035,8 @@ class Shack(QMainWindow):
 	def settings(self):
 		if isinstance(self.rig, Rspdx):
 			return self.rig.settings()
+		if isinstance(self.rig, thd.Rig):		# the band it's on, nothing else yet
+			return {'vfo': self.rig.vfo}
 		s = {'v': self.vol.value(), 'rfg': self.rfg.value(), 'nbl': self.lvl['nb'].value(), 'nrl': self.lvl['nr'].value(), **{k: int(self.sw[k].isChecked()) for k in ('nb', 'nr')}}
 		if isinstance(self.rig, cat.Rig):
 			s.update(pa=self.pa.currentIndex(), ra=self.ra.currentIndex(), roof=self.roof.currentText())
