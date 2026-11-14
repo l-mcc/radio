@@ -2766,11 +2766,11 @@ class Shack(QMainWindow):
 				switches.addWidget(self.nbr)
 			if k in self.lvl:		# CI-V: the radio's level
 				switches.addWidget(self.lvl[k])
-		self.sw['pre'] = QPushButton('Preamp', checkable=True)		# CI-V radios
+		self.sw['pre'] = QPushButton('On', checkable=True)		# CI-V radios; has its own row (Preamp) above RF gain
 		self.sw['att'] = QPushButton('ATT', checkable=True)
 		for k in ('pre', 'att'):
 			self.sw[k].clicked.connect(lambda on, k=k: self.rig and self.rig.set(k, on))
-			switches.insertWidget(0 if k == 'pre' else 1, self.sw[k])
+		switches.insertWidget(0, self.sw['att'])
 		self.sw['nr'].setToolTip('RNNoise: removes the noise floor under voice (SSB, AM). Turn off for very weak signals, music and CW; Digital out is unaffected')
 		self.save = QPushButton('Save', toolTip='Bookmark this frequency and mode with the radio\'s settings (updates it if it\'s already there)')
 		self.save.clicked.connect(self.bm_save)
@@ -2896,7 +2896,7 @@ class Shack(QMainWindow):
 		self.labels = {}		# control: its row label
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
-		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('Squelch', self.sq), ('Backlight', self.lamp), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof), ('Display', self.disp),
+		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('Squelch', self.sq), ('Backlight', self.lamp), ('Preamp', self.sw['pre']), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof), ('Display', self.disp),
 				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow), ('TX level', self.txrow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
