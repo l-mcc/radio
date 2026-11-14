@@ -381,6 +381,8 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 			" settings TEXT NOT NULL DEFAULT '{}', updated TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (hz, mode))")
 		self.db.execute("CREATE TABLE IF NOT EXISTS last (radio TEXT PRIMARY KEY, hz INTEGER NOT NULL, mode TEXT NOT NULL, settings TEXT NOT NULL DEFAULT '{}')")		# where each radio was left
 		self.db.execute("CREATE TABLE IF NOT EXISTS prefs (k TEXT PRIMARY KEY, v TEXT NOT NULL)")		# the table's sort
+		self.db.execute("CREATE TABLE IF NOT EXISTS heard (call TEXT NOT NULL, hz INTEGER NOT NULL, mode TEXT NOT NULL, dec TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 1, first TEXT NOT NULL, last TEXT NOT NULL,"
+			" level INTEGER, fec TEXT NOT NULL DEFAULT '', via TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', PRIMARY KEY (call, hz, mode, dec))")		# stations the decoders heard
 		if new and Path(old).exists():
 			self.copy_rspdx(old)
 		self.db.commit()
@@ -477,6 +479,20 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 		self.db.commit()
 		return
 	# set_last
+
+	'''-------------------------------------------------------------------
+		a station a decoder heard: one row per callsign, dial frequency, radio mode and decoder; hits counts up, first and last are local time
+		level: the decoder's own reading of the last frame (direwolf: its audio level); fec: FX.25 / IL2P; via: the digipeater it came through; text: its last beacon
+	-------------------------------------------------------------------'''
+
+	def heard(self, call, hz, mode, dec, level=None, fec='', via='', text=''):
+		now = time.strftime('%Y-%m-%d %H:%M:%S')
+		self.db.execute('INSERT INTO heard (call, hz, mode, dec, first, last, level, fec, via, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+			' ON CONFLICT (call, hz, mode, dec) DO UPDATE SET hits = hits + 1, last = excluded.last, level = excluded.level, fec = excluded.fec, via = excluded.via,'
+			" text = CASE WHEN excluded.text != '' THEN excluded.text ELSE heard.text END", (call, hz, mode, dec, now, now, level, fec, via, text))
+		self.db.commit()
+		return
+	# heard
 
 # class Bookmarks
 
@@ -1451,6 +1467,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	NAMED = re.compile(r'CQFRAME (\S+)|HEADER (\S+) → (\S+):|link (\S+) → (\S+) ended')		# xara-monitor lines that carry callsigns
 	DE = re.compile(r'\bde ([A-Z0-9]+(?:-\d{1,2})?)\b')		# VarAC text: '15 de N5IMC <R+08>'
 	CALL = re.compile(r'(?=.*\d)(?=.*[A-Z])[A-Z0-9]{3,7}(-\d{1,2})?')		# a callsign, not a #hash
+	LEVEL = re.compile(r'^(Digipeater )?(\S+)(?: \(probably (\S+)\))? audio level = (\d+)\(\S*\)\s+(FX\.25|IL2P)?')		# direwolf's first line for a packet: who was on the air, how loud, error correction
+	FRAME = re.compile(r'^\[\d[^\]]*\] ([A-Z0-9-]+)>[A-Z0-9-]+(?:,[A-Z0-9-]+\*?)*:(.*)')		# its second: '[0.2] FROM>TO,DIGI*:' and what the packet holds
+	LINK = re.compile(r'^\((I|RR|RNR|REJ|SREJ|SABME?|DISC|DM|UA|FRMR|XID|TEST) ')		# a connected-mode frame; anything else is a beacon's text
 
 	'''-------------------------------------------------------------------
 		digi(): turns the radio's Digital out on
@@ -1477,6 +1496,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.scope, self.ready = False, False		# Spectrum button: strip on with no decoder; a radio is open (shack sets it)
 		self.lines = {}		# JS8: offset Hz: (cursor at the start of that message's line, when its last frame came, the line's start); a message's frames join one line
 		self.logging, self.logged = False, None		# Log button; logged: the decoder the file's last header was for
+		self.onheard, self.pkh = None, None		# onheard(call, decoder, level, fec, via, text): a station was heard (shack sets it); pkh: direwolf's 'audio level' line, waiting for its packet line
 		self.load()
 		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, PSK31, Olivia, VARA, ARDOP (ardopcf), packet, JS8 (through JS8Call), FT4, FT8 (jt9) or WSPR (wsprd). Right-click for settings')
 		self.pick.addItems(self.KINDS)
@@ -1619,6 +1639,32 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	# heard
 
 	'''-------------------------------------------------------------------
+		direwolf's two lines per packet -> onheard: the station that sent it; through a digipeater, the digipeater (it's the one on the air here) and the sender with via
+		eg  N3VEM-1 audio level = 35(8/8)   FX.25   00000____
+		    [0.2] N3VEM-1>MAIL:Mail For:N3VEM
+	-------------------------------------------------------------------'''
+
+	def pkseen(self, line):
+		m = self.LEVEL.match(line)
+		if m:
+			self.pkh = (m[3] or m[2], int(m[4]), m[5] or '', bool(m[1]))
+			return
+		m = self.FRAME.match(line)
+		if m and self.onheard:
+			src, info = m[1], m[2]
+			who, level, fec, digi = self.pkh or (src, None, '', False)
+			self.pkh = None
+			text = '' if self.LINK.match(info) else re.sub(r'(<0x0[ad]>)+', ' ', info).strip()[:200]
+			if digi and who != src:
+				if not who.startswith(('WIDE', 'RELAY', 'TRACE')):		# an alias, not a station
+					self.onheard(who, 'Packet', level, fec)
+				self.onheard(src, 'Packet', level, fec, who, text)
+			else:
+				self.onheard(src, 'Packet', level, fec, '', text)
+		return
+	# pkseen
+
+	'''-------------------------------------------------------------------
 		a new decoder with the current settings
 	-------------------------------------------------------------------'''
 
@@ -1641,6 +1687,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			else:
 				h = Helper('Packet', ['-c', self.dwconf(), '-t', '0'], self.PACKET[self.pk], self.add, self.died)
 				h.drop = self.NAGS if self.hide else ()
+				h.seen = self.pkseen
 				h.gain = 0.5		# Digital out arrives at direwolf's 'audio level' 70-100; it wants about 50 (above that it warns of distortion)
 			if self.sk or self.rec:		# still on: a failed start has already turned it off
 				self.dec = h
@@ -2813,6 +2860,7 @@ class Shack(QMainWindow):
 		self.gwwait, self.gwnext = QTimer(interval=500, timeout=self.gw_ready), None		# a connect waiting for the modem: (call, url, give up at)
 		self.mailw = None		# the Mail window, once opened
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
+		self.dec.onheard = self.heard
 		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
@@ -4017,6 +4065,16 @@ class Shack(QMainWindow):
 		self.show_bms()
 		return
 	# bm_tune
+
+	'''-------------------------------------------------------------------
+		a decoder heard a station: into bookmarks.db's heard table, with where the radio is (dial frequency, mode)
+	-------------------------------------------------------------------'''
+
+	def heard(self, call, dec, level=None, fec='', via='', text=''):
+		if self.rig:
+			self.bm.heard(call, self.freq.hz, self.mode.currentText(), dec, level, fec, via, text)
+		return
+	# heard
 
 	'''-------------------------------------------------------------------
 		Save: bookmark the open radio's frequency, mode and settings
