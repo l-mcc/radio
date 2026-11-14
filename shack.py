@@ -2991,6 +2991,7 @@ class Shack(QMainWindow):
 		self.rig.att_on = r['att']
 		self.rig.modes = r['modes']
 		self.rig.po = r.get('po')
+		self.rig.m26 = r.get('m26', False)
 		self.has_swr = r['swr']		# the X6200 always reads 0
 		self.agcs = r['agc']
 		quiet(self.agc, self.agc.clear)
