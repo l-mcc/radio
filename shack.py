@@ -59,7 +59,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>Heard (right)</h3>
-<p>Stations the Packet decoder has heard, kept in bookmarks.db: one row for each callsign at each dial frequency. The tab shows the band the radio is on (everything when it's outside the ham bands) and fills in as packets arrive. Hits counts its packets; Last is when the latest came (today: the time, otherwise the date too); FEC says FX.25 or IL2P; Via is the digipeater when you didn't hear the station itself (the digipeater gets its own row: it's the one you heard); Text is its last beacon. Rest the mouse on a row for when it was first heard, direwolf's audio level and the whole text. Click a column heading to sort by it, again for the other way; remembered. Double-click: go to that frequency and mode with the decoder that heard it. Right-click: forget one station, clear the band, or clear the whole list.</p>
+<p>Stations the Packet decoder has heard, kept in bookmarks.db: one row for each callsign at each dial frequency. The tab shows every frequency on every band and fills in as packets arrive (click MHz to group them by frequency). Hits counts its packets; Last is when the latest came (today: the time, otherwise the date too); FEC says FX.25 or IL2P; Via is the digipeater when you didn't hear the station itself (the digipeater gets its own row: it's the one you heard); Text is its last beacon. Rest the mouse on a row for when it was first heard, direwolf's audio level and the whole text. Click a column heading to sort by it, again for the other way; remembered. Double-click: go to that frequency and mode with the decoder that heard it. Right-click: forget one station, or clear the whole list.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. CI-V can't read which one the radio is on, so opening the IC-705 or Xiegu puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. To send mail: right-click > Compose a message (To, Cc, Subject, text; Put in the outbox), then double-click a gateway (or right-click it > Connect): shack sets Modem to Transmit if it isn't, Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. When Pat is done (or you stop it) shack sets Modem back to Off. The menu says how many messages are waiting in the outbox. Right-click > Stop Pat gives up on a connect. Right-click a gateway > Add as a Pat alias puts it in Pat's config (connect_aliases, named like ko4hjo-7100.5) for pat connect and Pat's own Connect list; it shows with a ★ here, and the same menu item removes it. Right-click > Mail opens Pat's mailbox here (no browser): Inbox, Outbox, Sent, Archive; unread messages are bold and are marked read when you open them; Reply (to the sender), Reply all, Save attachments, Archive, Delete, Compose. After a connect the bottom line says how many are unread. BUSY in the bottom left corner of the window (there while the modem runs) is red while xara (the modem) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
@@ -70,6 +70,9 @@ HELP = '''
 
 <h3>TH-D75</h3>
 <p>Kenwood handheld on its USB-C cable (receive only from here, so far): frequency, mode, volume, squelch, backlight, signal and bookmarks. Volume is the radio's own (its VOL ring shows up here too; 1.00 = 200 on the radio's scale); Squelch is 0-5 for the VFO that's lit (0 = always open); Backlight: On keeps the display lit. VFO A and VFO B are the radio's band A and band B; the one its keys work on is lit, and tuning from here goes to that one. Opening it puts the radio in single-band mode, so you hear only the VFO that's lit (in the radio's dual-band mode both play at once; [F], [A/B] on the radio switches). Band A covers 136-174, 216-260 and 410-470 MHz in FM and DV only; band B is the wide receiver, 0.1-524 MHz in every mode (broadcast FM: VFO B, WBFM). The radio tunes in steps: a frequency that isn't on the band's step gets the widest step it sits on (25 kHz for 162.475, say), else the nearest 5 kHz; what the radio ended up on is what shows. Signal is the radio's own 0-5 bars. If band B is silent, check the radio's volume balance (menu 910: MENU, 9, 1, 0). The radio's TNC must not be in KISS mode: its port carries packets then and stops answering.</p>
+
+<h3>Record</h3>
+<p>Records the radio's receive audio, what the decoder and the spectrum strip hear, to /tmp/x.wav (48 kHz, mono); click again to stop. The button counts the seconds. Each recording replaces the last. No decoder running: the audio is read just for the recording. Stops by itself after 10 minutes, when the radio is closed, or when the modem takes the sound card.</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -498,26 +501,24 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 	# heard
 
 	'''-------------------------------------------------------------------
-		the heard list: every row, or only those inside band (lo, hi kHz); sorted by a column of the table (HEARD), down = Z-A / high to low / newest first; ties newest first
-		unheard: forgets one row (h), a band's rows, or with neither the whole list
+		the heard list, sorted by a column of the table (HEARD), down = Z-A / high to low / newest first; ties newest first
+		unheard: forgets one row (h), or the whole list
 	-------------------------------------------------------------------'''
 
 	HEARD = ('call', 'hz', 'hits', 'last', 'fec', 'via', 'text')
 
-	def heards(self, band=None, col=3, down=True):
-		lo, hi = band or (0, 10 ** 9)
+	def heards(self, col=3, down=True):
 		cols = ('call', 'hz', 'mode', 'dec', 'hits', 'first', 'last', 'level', 'fec', 'via', 'text')
-		out = [dict(zip(cols, row)) for row in self.db.execute(f"SELECT {', '.join(cols)} FROM heard WHERE hz BETWEEN ? AND ? ORDER BY last DESC", (lo * 1000, hi * 1000))]
+		out = [dict(zip(cols, row)) for row in self.db.execute(f"SELECT {', '.join(cols)} FROM heard ORDER BY last DESC")]
 		k = self.HEARD[col]
 		return sorted(out, key=lambda h: h[k].casefold() if isinstance(h[k], str) else h[k], reverse=down)		# stable: ties stay newest first
 	# heards
 
-	def unheard(self, h=None, band=None):
+	def unheard(self, h=None):
 		if h:
 			self.db.execute('DELETE FROM heard WHERE call = ? AND hz = ? AND mode = ? AND dec = ?', (h['call'], h['hz'], h['mode'], h['dec']))
 		else:
-			lo, hi = band or (0, 10 ** 9)
-			self.db.execute('DELETE FROM heard WHERE hz BETWEEN ? AND ?', (lo * 1000, hi * 1000))
+			self.db.execute('DELETE FROM heard')
 		self.db.commit()
 		return
 	# unheard
@@ -1522,6 +1523,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.api, self.js8 = None, None		# JS8: socket JS8Call's API sends to; (when it last pinged, its version)
 		self.js8pid = None		# JS8Call when shack started it: closed when JS8 stops (one started by hand is left running)
 		self.scope, self.ready = False, False		# Spectrum button: strip on with no decoder; a radio is open (shack sets it)
+		self.wav, self.wavn = None, 0		# Record button: the open /tmp/x.wav, samples written to it
 		self.lines = {}		# JS8: offset Hz: (cursor at the start of that message's line, when its last frame came, the line's start); a message's frames join one line
 		self.logging, self.logged = False, None		# Log button; logged: the decoder the file's last header was for
 		self.onheard, self.pkh = None, None		# onheard(call, decoder, level, fec, via, text): a station was heard (shack sets it); pkh: direwolf's 'audio level' line, waiting for its packet line
@@ -1558,6 +1560,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.text.setStyleSheet(f"QPlainTextEdit {{ background-color: {styles.decoder['text']}; }}")
 		self.scopeb = QPushButton('Spectrum', checkable=True, checked=self.scope, toolTip='The audio spectrum strip, also with no decoder running (voice, music...)')
 		self.scopeb.clicked.connect(self.set_scope)
+		self.recb = QPushButton('Record', checkable=True, toolTip=f'Record the radio\'s receive audio to {self.WAV} (replaces the last one); click again to stop')
+		self.recb.clicked.connect(self.set_rec)
 		self.spec = Spectrum(self)
 		for w in (self.row, self.spec, self.text):
 			w.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -1573,9 +1577,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	def start(self, kind):
 		self.stop(keep=kind == 'JS8')		# JS8 again: keep its JS8Call
 		if kind == 'Off':
-			if not (self.scope and self.ready):
+			if not ((self.scope or self.wav) and self.ready):
 				return
-			kind = 'Scope'		# no decoder, Spectrum on: the strip alone
+			kind = 'Scope'		# no decoder, Spectrum or Record on: the audio and the strip alone
 		if not decode:
 			quiet(self.pick, self.pick.setCurrentIndex, 0)
 			return self.status.setText(f"can't decode: {NODECODE}")
@@ -1764,10 +1768,58 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		return
 	# stop
 
-	def off(self):
+	def off(self):		# the audio is gone (radio closed, card lost, program died): a recording ends too
 		self.stop()
 		quiet(self.pick, self.pick.setCurrentIndex, 0)
+		self.rec_end()
 		return
+
+	'''-------------------------------------------------------------------
+		Record button: the audio poll() reads goes to /tmp/x.wav too; with no decoder the audio is started for it (and stopped after, unless Spectrum wants it)
+	-------------------------------------------------------------------'''
+
+	WAV = Path('/tmp/x.wav')
+	WAVMAX = 600		# s: auto stop (~58 MB)
+
+	def set_rec(self, on):
+		if not on:
+			return self.rec_end()
+		why = None if self.ready else 'no radio open'
+		if not why:
+			try:
+				self.wav = wave.open(str(self.WAV), 'wb')
+				self.wav.setnchannels(1)
+				self.wav.setsampwidth(2)
+				self.wav.setframerate(48000)		# arecord and the RSPdx's Digital out alike
+				self.wavn = 0
+			except OSError as e:
+				self.wav, why = None, f'{self.WAV}: {e.strerror}'
+		if not why and not self.dec:
+			self.start('Off')
+			if not self.dec:
+				self.rec_end()
+				why = self.status.text() or 'no audio'
+		if why:
+			quiet(self.recb, self.recb.setChecked, False)
+			return self.status.setText(f'Record: {why}')
+		log.info(f'recording to {self.WAV}')
+		return
+	# set_rec
+
+	def rec_end(self):
+		if not self.wav:
+			return
+		self.wav.close()
+		self.wav = None
+		quiet(self.recb, self.recb.setChecked, False)
+		self.recb.setText('Record')
+		self.newline()
+		self.add(f'recorded {self.wavn / 48000:.1f} s to {self.WAV}\n')
+		log.info(f'recorded {self.wavn / 48000:.1f} s to {self.WAV}')
+		if self.kind == 'Scope' and self.dec and not self.scope:		# the audio was running only for the recording
+			self.stop()
+		return
+	# rec_end
 
 	'''-------------------------------------------------------------------
 		Spectrum button: on with no decoder starts the strip alone; off stops it (a decoder keeps its strip)
@@ -1777,7 +1829,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.scope = on
 		if on and self.ready and not self.dec:
 			self.start('Off')
-		elif not on and self.kind == 'Scope' and self.dec:
+		elif not on and self.kind == 'Scope' and self.dec and not self.wav:
 			self.off()
 		self.save()
 		return
@@ -1819,6 +1871,12 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			raw = b''.join(data)
 		if raw:
 			self.heard = time.monotonic()
+			if self.wav:
+				self.wav.writeframes(raw)
+				self.wavn += len(raw) // 2
+				self.recb.setText(f'Record {self.wavn // 48000} s')
+				if self.wavn >= self.WAVMAX * 48000:
+					QTimer.singleShot(0, self.rec_end)		# not from inside poll: it may stop the audio poll is still using
 			x = np.frombuffer(raw, '<i2') / 32768.0
 			self.peaks.append((self.heard, float(np.abs(x).max()) if len(x) else 0.0))
 			txt, new = self.dec(x)
@@ -2887,7 +2945,7 @@ class Shack(QMainWindow):
 		self.gwlist, self.gwband, self.pat, self.rmsp = [], None, None, None		# rows shown, their band, a running pat connect, a running rms.py
 		self.gwwait, self.gwnext = QTimer(interval=500, timeout=self.gw_ready), None		# a connect waiting for the modem: (call, url, give up at)
 		self.mailw = None		# the Mail window, once opened
-		self.hds = QTableWidget(0, 7, toolTip='Stations the Packet decoder has heard on the band the radio is on.  Double-click: go to where it was heard.  Right-click: forget one, or clear the list.  Click a column heading to sort by it (again: the other way).')
+		self.hds = QTableWidget(0, 7, toolTip='Stations the Packet decoder has heard, every frequency.  Double-click: go to where it was heard.  Right-click: forget one, or clear the list.  Click a column heading to sort by it (again: the other way).')
 		self.hds.setHorizontalHeaderLabels(['Call', 'MHz', 'Hits', 'Last', 'FEC', 'Via', 'Text'])
 		self.hds.verticalHeader().hide()
 		hd = self.hds.horizontalHeader()
@@ -2903,10 +2961,10 @@ class Shack(QMainWindow):
 		self.hds.cellDoubleClicked.connect(lambda r, c: self.hd_pick(r))
 		self.hds.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.hds.customContextMenuRequested.connect(self.hd_menu)
-		self.hdlist, self.hdband = [], None		# rows shown, their band
+		self.hdlist = []		# rows shown
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
 		self.dec.onheard = self.heard
-		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
+		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.dec.recb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
 		self.tx = QLabel('RX')
@@ -3007,6 +3065,7 @@ class Shack(QMainWindow):
 		QShortcut(QKeySequence.StandardKey.HelpContents, self, self.help)
 		more.addWidget(hb)
 		more.addWidget(self.dec.scopeb)
+		more.addWidget(self.dec.recb)
 		more.addStretch()
 		row += 1
 		g.addLayout(more, row, 0, 1, 3)
@@ -3101,7 +3160,7 @@ class Shack(QMainWindow):
 		self.rig.set('vfo', self.bm.pref(f'vfo {name}', 'A'))		# CI-V can't tell which VFO the radio is on: put it on the one shack last left it on, so the right button lights
 		self.smeter.setRange(-54, 60)
 		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.modemrow, *([self.scoperow] if r['scope'] else []), self.save, self.tabs,
-			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))		# nb, nr: the radio's own, on/off
+			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.dec.recb))		# nb, nr: the radio's own, on/off
 		self.card = card_of(dev) or r['audio']		# the card in this radio; by name if sysfs doesn't say
 		self.dec.opened(self.card)		# decoders read the radio's USB sound card
 		self.levels()
@@ -3138,7 +3197,7 @@ class Shack(QMainWindow):
 		self.rig.poll(0)
 		self.smeter.setRange(-54, 60)
 		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.vol, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, self.power, self.pttrow, self.modemrow, self.scoperow, self.save, self.tabs,
-			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb))
+			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.dec.recb))
 		self.card = card_of(dev) or r['audio']		# the card in this radio; by name if sysfs doesn't say
 		self.dec.opened(self.card)
 		self.levels()
@@ -3315,7 +3374,7 @@ class Shack(QMainWindow):
 		if why:
 			return self.modemst.setText(why)
 		self.dec.closed()		# arecord lets go of the card
-		for w in (self.dec.row, self.dec.scopeb):
+		for w in (self.dec.row, self.dec.scopeb, self.dec.recb):
 			w.setEnabled(False)
 		moved = self.rig.vfo != 'A'
 		if moved:
@@ -3666,7 +3725,7 @@ class Shack(QMainWindow):
 		quiet(self.modem, self.modem.setCurrentIndex, 0)
 		self.modemst.setText('')
 		if not self.dec.row.isEnabled():		# the decoders get the card back
-			for w in (self.dec.row, self.dec.scopeb):
+			for w in (self.dec.row, self.dec.scopeb, self.dec.recb):
 				w.setEnabled(True)
 			if isinstance(self.rig, (civ.Rig, cat.Rig)):
 				self.dec.opened(self.card)
@@ -3892,8 +3951,6 @@ class Shack(QMainWindow):
 				self.tx_band(v)
 			if self.tabs.currentWidget() is self.gws and self.band_of(v) != self.gwband:
 				self.show_gws()
-			if self.tabs.currentWidget() is self.hds and self.band_of(v) != self.hdband:
-				self.show_hds()
 		elif k == 'mode' and self.mode.findText(v) >= 0:
 			self.mode.setCurrentText(v)
 			if v.removesuffix('-D') in civ.NOWIDTH:		# FM: the radio doesn't report a width
@@ -4136,14 +4193,13 @@ class Shack(QMainWindow):
 	# tab_shown
 
 	'''-------------------------------------------------------------------
-		Heard tab: bookmarks.db's heard table for the radio's band (all of it outside the ham bands or with no radio); the selected station stays selected when the table is filled again
+		Heard tab: bookmarks.db's heard table, every frequency; the selected station stays selected when the table is filled again
 	-------------------------------------------------------------------'''
 
 	def show_hds(self):
-		self.hdband = self.band_of(self.freq.hz / 1e6) if self.rig else None
 		r = self.hds.currentRow()
 		was = (self.hdlist[r]['call'], self.hdlist[r]['hz']) if 0 <= r < len(self.hdlist) else None
-		self.hdlist = self.bm.heards(self.hdband, *self.hdsort)
+		self.hdlist = self.bm.heards(*self.hdsort)
 		self.hds.setRowCount(len(self.hdlist))
 		today = time.strftime('%Y-%m-%d')
 		for r, h in enumerate(self.hdlist):
@@ -4188,22 +4244,21 @@ class Shack(QMainWindow):
 	# hd_pick
 
 	'''-------------------------------------------------------------------
-		right-click: forget the station under the mouse, the band's stations, or all of them (the last two ask first)
+		right-click: forget the station under the mouse, or all of them (asks first)
 	-------------------------------------------------------------------'''
 
 	def hd_menu(self, pos):
 		r = self.hds.rowAt(pos.y())
 		menu = QMenu(self)
 		one = menu.addAction(f"Forget {self.hdlist[r]['call']}") if r >= 0 else None
-		band = menu.addAction('Clear this band') if self.hdband else None
 		every = menu.addAction('Clear the whole list')
 		act = menu.exec(self.hds.viewport().mapToGlobal(pos))
 		if act is None:
 			return
 		if act == one:
 			self.bm.unheard(self.hdlist[r])
-		elif QMessageBox.question(self, 'Heard', 'Forget every station heard on this band?' if act == band else 'Forget every station heard, on every band?') == QMessageBox.StandardButton.Yes:
-			self.bm.unheard(band=self.hdband if act == band else None)
+		elif act == every and QMessageBox.question(self, 'Heard', 'Forget every station heard, on every band?') == QMessageBox.StandardButton.Yes:
+			self.bm.unheard()
 		self.show_hds()
 		return
 	# hd_menu
