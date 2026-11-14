@@ -260,6 +260,12 @@ class Rig:
 		s.send(0x1C, 0x00)
 		return True
 
+	def send_mode(s, base, fil):		# filter byte required by the X6200 (it ignores 06 xx alone)
+		if s.m26 and base == 'WBFM':		# X6200: 06 06 lands on NBFM, 26 00 06 gets broadcast FM (firmware 1.0.7)
+			s.send(0x26, 0x00, MODES[base], 0x00, fil)
+		else:
+			s.send(0x06, MODES[base], fil)
+
 	def set(s, k, v):
 		s.last_set = time.monotonic()
 		if k == 'ptt':
@@ -270,7 +276,7 @@ class Rig:
 		elif k == 'mode':
 			base, data = v.removesuffix('-D'), v.endswith('-D')
 			s.base, s.data, s.fil = base, int(data), 1		# ahead of the radio's report, so a fil right after this goes with the new mode
-			s.send(0x06, MODES[base], 0x01)		# filter byte required by the X6200 (it ignores 06 xx alone); FIL1
+			s.send_mode(base, 0x01)		# FIL1
 			if base in DATA_OK:
 				s.send(0x1A, 0x06, *((0x01, 0x01) if data else (0x00, 0x00)))		# data mode, FIL1
 			s.read_fast(base)
@@ -279,7 +285,7 @@ class Rig:
 			if s.data and s.base in DATA_OK:
 				s.send(0x1A, 0x06, 0x01, f)		# in data mode the filter rides on the data command
 			else:
-				s.send(0x06, MODES[s.base], f)
+				s.send_mode(s.base, f)
 			s.read_fast()
 		elif k == 'ref':
 			n = round(abs(float(v)) * 2) * 50		# 0.5 dB steps, hundredths
