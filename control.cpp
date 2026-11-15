@@ -24,6 +24,7 @@ int ssb_bw_low = 300;
 int ssb_bw_high = 3100;
 bool wf_on = false;
 bool digi_on = false;
+std::string iq_path;
 bool nb_on = false;
 int nb_db = 12;
 bool nr_on = false;
@@ -394,8 +395,8 @@ bool Control::command(const std::string& line) {
 	if (op == "q" || op == "quit") return false;
 	if (op == "status") { status(); notice_ = "Settings refreshed"; return true; }
 	if (op == "help" || op == "h" || op == "?") {
-		notice_ = "f MHz | m lsb/usb/am/wbfm | v volume | if dB | lna state | ant a/b/c | hdr 0/1 | notch 0/1 | dab 0/1 | ref dB | zoom 0-2 | bw 0-3 | wf 0/1 | digi 0/1 | nb 0/1/dB | nr 0/1 | s [name] | q";
-		if (!ui_active_) fprintf(stderr, "Commands: f <MHz>, m <lsb|usb|am|wbfm>, v <volume>, g <IF-reduction> <LNA>, if <dB>, lna <state>, ant <a|b|c>, hdr <0|1>, notch <0|1>, dab <0|1>, ref <dB>, zoom <0-2>, bw <0-3>, wf <0|1>, digi <0|1>, nb <0|1|8-20>, nr <0|1>, s/save [name], status, q\n");
+		notice_ = "f MHz | m lsb/usb/am/wbfm | v volume | if dB | lna state | ant a/b/c | hdr 0/1 | notch 0/1 | dab 0/1 | ref dB | zoom 0-2 | bw 0-3 | wf 0/1 | digi 0/1 | iq file/0 | nb 0/1/dB | nr 0/1 | s [name] | q";
+		if (!ui_active_) fprintf(stderr, "Commands: f <MHz>, m <lsb|usb|am|wbfm>, v <volume>, g <IF-reduction> <LNA>, if <dB>, lna <state>, ant <a|b|c>, hdr <0|1>, notch <0|1>, dab <0|1>, ref <dB>, zoom <0-2>, bw <0-3>, wf <0|1>, digi <0|1>, iq <file|0>, nb <0|1|8-20>, nr <0|1>, s/save [name], status, q\n");
 		return true;
 	}
 
@@ -453,6 +454,16 @@ bool Control::command(const std::string& line) {
 			digi_on = value == "1" || value == "on";
 			notice_ = digi_on ? "Digital out on: UDP 127.0.0.1:7355" : "Digital out off";
 		} else notice_ = "Usage: digi 0/1";
+		return true;
+	}
+
+	if (op == "iq") {		// iq <file>: record the I/Q stream to it (16-bit I, Q pairs); iq 0: stop
+		std::string value;
+		std::getline(in >> std::ws, value);
+		if (!value.empty()) {
+			iq_path = value == "0" || value == "off" ? "" : value;
+			notice_ = iq_path.empty() ? "I/Q recording off" : "I/Q recording to " + iq_path;
+		} else notice_ = "Usage: iq <file>, iq 0";
 		return true;
 	}
 

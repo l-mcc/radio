@@ -73,7 +73,7 @@ HELP = '''
 <p>Kenwood handheld on its USB-C cable (receive only from here, so far): frequency, mode, volume, squelch, backlight, signal and bookmarks. Volume is the radio's own (its VOL ring shows up here too; 1.00 = 200 on the radio's scale); Squelch is 0-5 for the VFO that's lit (0 = always open); Backlight: On keeps the display lit. VFO A and VFO B are the radio's band A and band B; the one its keys work on is lit, and tuning from here goes to that one. Opening it puts the radio in single-band mode, so you hear only the VFO that's lit (in the radio's dual-band mode both play at once; [F], [A/B] on the radio switches). Band A covers 136-174, 216-260 and 410-470 MHz in FM and DV only; band B is the wide receiver, 0.1-524 MHz in every mode (broadcast FM: VFO B, WBFM). The radio tunes in steps: a frequency that isn't on the band's step gets the widest step it sits on (25 kHz for 162.475, say), else the nearest 5 kHz; what the radio ended up on is what shows. Signal is the radio's own 0-5 bars. If band B is silent, check the radio's volume balance (menu 910: MENU, 9, 1, 0). The radio's TNC must not be in KISS mode: its port carries packets then and stops answering.</p>
 
 <h3>Record</h3>
-<p>Records the radio's receive audio, what the decoder and the spectrum strip hear, to /tmp/x.wav (48 kHz, mono); click again to stop. The button counts the seconds. Each recording replaces the last. No decoder running: the audio is read just for the recording. Stops by itself after 10 minutes, when the radio is closed, or when the modem takes the sound card.</p>
+<p>Records the radio's receive audio, what the decoder and the spectrum strip hear, to /tmp/x.wav (48 kHz, mono); click again to stop. The button counts the seconds. No decoder running: the audio is read just for the recording. Stops by itself after 10 minutes, when the radio is closed, or when the modem takes the sound card. When it stops you're asked for a name: x.wav becomes NAME.wav in /tmp (the frequency and mode are offered; blank or Cancel leaves it as x.wav, which the next recording replaces). Record I/Q (RSPdx only) records the same audio and, next to it, the RSPdx's I/Q stream as rspdx gets it, before any demodulating: /tmp/x.cs16, then NAME.cs16: 16-bit I, Q pairs, 500 kS/s in SSB and AM (2 MB a second), 1 MS/s in WBFM. The text box says its length, sample rate and centre frequency (the file's 0 Hz: a little off the dial, where the RSPdx is really tuned); inspectrum, SigDigger and GNU Radio read it given the rate. It stops by itself at 1 GB (about 4 minutes) or when the mode changes. Needs an rspdx built after 2026-11-15 (./build.sh).</p>
 
 <h3>Spectrum</h3>
 <p>The button next to Help keeps the audio spectrum strip running whenever a radio is open, with or without a decoder: voice, music, whatever is in the passband (300-2900 Hz). It's remembered. Pause on the Decoder line freezes the strip, and the IC-705 waterfall with it, until you click it again; decoding carries on. The decoder area's colors are in styles.py (decoder).</p>
@@ -603,6 +603,8 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 					self.show()
 				elif m['type'] == 'meter':		# every 250 ms
 					self.emit('meter', (m['adc'], m['sig'], m['nbr']))
+				elif m['type'] == 'iq':		# an I/Q recording ended: its file, sample rate, centre (Hz), samples, why (if not asked to)
+					self.emit('iq', m)
 				elif m['type'] == 'bookmarks':		# rspdx's own list, empty under shack (bookmarks.db is shack's)
 					pass
 			except (ValueError, KeyError, TypeError) as e:		# not JSON, or an rspdx older than this file (pull without ./build.sh): log it, keep going
@@ -1556,6 +1558,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.js8pid = None		# JS8Call when shack started it: closed when JS8 stops (one started by hand is left running)
 		self.scope, self.ready = False, False		# Spectrum button: strip on with no decoder; a radio is open (shack sets it)
 		self.wav, self.wavn = None, 0		# Record button: the open /tmp/x.wav, samples written to it
+		self.oniq, self.iq = None, False		# oniq(file or None): the RSPdx starts / stops recording I/Q (shack sets it); iq: it is, alongside the audio
 		self.lines = {}		# JS8: offset Hz: (cursor at the start of that message's line, when its last frame came, the line's start); a message's frames join one line
 		self.logging, self.logged = False, None		# Log button; logged: the decoder the file's last header was for
 		self.onheard, self.pkh = None, None		# onheard(call, decoder, level, fec, via, text, svc): a station was heard (shack sets it); pkh: direwolf's 'audio level' line, waiting for its packet line
@@ -1594,6 +1597,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.scopeb.clicked.connect(self.set_scope)
 		self.recb = QPushButton('Record', checkable=True, toolTip=f'Record the radio\'s receive audio to {self.WAV} (replaces the last one); click again to stop')
 		self.recb.clicked.connect(self.set_rec)
+		self.iqb = QPushButton('Record I/Q', checkable=True, toolTip=f'RSPdx: record its I/Q stream to {self.IQ} and the audio to {self.WAV}; click again to stop and name them')
+		self.iqb.clicked.connect(lambda on: self.set_rec(on, True))
 		self.spec = Spectrum(self)
 		for w in (self.row, self.spec, self.text):
 			w.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -1813,11 +1818,14 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	-------------------------------------------------------------------'''
 
 	WAV = Path('/tmp/x.wav')
+	IQ = Path('/tmp/x.cs16')		# the RSPdx's I/Q as rspdx gets it: 16-bit I, Q pairs (500 kS/s in SSB and AM = 2 MB/s); rspdx stops at 1 GB
 	WAVMAX = 600		# s: auto stop (~58 MB)
 
-	def set_rec(self, on):
+	def set_rec(self, on, iq=False):
 		if not on:
 			return self.rec_end()
+		if self.wav:		# the other button, mid-recording
+			return quiet(self.iqb if iq else self.recb, (self.iqb if iq else self.recb).setChecked, False)
 		why = None if self.ready else 'no radio open'
 		if not why:
 			try:
@@ -1835,8 +1843,14 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 				why = self.status.text() or 'no audio'
 		if why:
 			quiet(self.recb, self.recb.setChecked, False)
+			quiet(self.iqb, self.iqb.setChecked, False)
 			return self.status.setText(f'Record: {why}')
-		log.info(f'recording to {self.WAV}')
+		self.iq = iq and bool(self.oniq)
+		if self.iq:
+			self.IQ.unlink(missing_ok=True)		# so a file there afterwards is this recording's
+			self.oniq(self.IQ)
+		(self.recb if self.iq else self.iqb).setEnabled(False)
+		log.info(f'recording to {self.WAV}' + (f' and {self.IQ}' if self.iq else ''))
 		return
 	# set_rec
 
@@ -1845,15 +1859,57 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			return
 		self.wav.close()
 		self.wav = None
-		quiet(self.recb, self.recb.setChecked, False)
-		self.recb.setText('Record')
+		for b, t in ((self.recb, 'Record'), (self.iqb, 'Record I/Q')):
+			quiet(b, b.setChecked, False)
+			b.setText(t)
+			b.setEnabled(True)
+		iq, self.iq = self.iq, False
+		if iq:
+			self.oniq(None)
 		self.newline()
 		self.add(f'recorded {self.wavn / 48000:.1f} s to {self.WAV}\n')
 		log.info(f'recorded {self.wavn / 48000:.1f} s to {self.WAV}')
 		if self.kind == 'Scope' and self.dec and not self.scope:		# the audio was running only for the recording
 			self.stop()
+		QTimer.singleShot(300, lambda: self.rec_name(iq))		# not from in here (a radio being closed ends a recording too); rspdx has closed its file by then
 		return
 	# rec_end
+
+	'''-------------------------------------------------------------------
+		a recording ended: asks for a name; /tmp/x.wav (and x.cs16) become /tmp/NAME.wav (.cs16). Cancel or blank: they stay x
+	-------------------------------------------------------------------'''
+
+	def rec_name(self, iq):
+		files = [f for f in ((self.WAV, self.IQ) if iq else (self.WAV,)) if f.exists()]
+		if iq and self.IQ not in files:
+			self.add(f"no {self.IQ}: rspdx didn't record (an older rspdx? ./build.sh)\n")
+		name, ok = QInputDialog.getText(self.text, 'Recording', f"Name for {' and '.join(f.name for f in files)} in {self.WAV.parent} (blank: leave as x):", text=self.recname() if self.recname else '')
+		name = re.sub(r'[/\x00]', '-', name.strip())
+		if not ok or not name:
+			return
+		try:
+			for f in files:
+				f.replace(f.with_name(name + f.suffix))
+			self.add('saved ' + ', '.join(str(f.with_name(name + f.suffix)) for f in files) + '\n')
+			log.info(f'recording named {name}')
+		except OSError as e:
+			self.status.setText(f'Record: {e.filename}: {e.strerror}')
+		return
+	# rec_name
+
+	recname = None		# shack sets it: a name to offer (frequency and mode)
+
+	def iq_done(self, m):		# rspdx's report on an I/Q recording: what the file holds; why, when rspdx ended it itself
+		if m['why']:
+			self.add(f"I/Q recording stopped: {m['why']}\n")
+			if self.iq:
+				self.rec_end()
+		if m['n']:
+			line = f"I/Q: {m['n'] / m['rate']:.1f} s, {m['rate'] / 1e3:g} kS/s, centre {m['hz'] / 1e6:.6f} MHz, 16-bit I/Q ({m['n'] * 4 / 1e6:.0f} MB)"
+			self.add(line + '\n')
+			log.info(line)
+		return
+	# iq_done
 
 	'''-------------------------------------------------------------------
 		Spectrum button: on with no decoder starts the strip alone; off stops it (a decoder keeps its strip)
@@ -1908,7 +1964,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			if self.wav:
 				self.wav.writeframes(raw)
 				self.wavn += len(raw) // 2
-				self.recb.setText(f'Record {self.wavn // 48000} s')
+				(self.iqb if self.iq else self.recb).setText(f"{'Record I/Q' if self.iq else 'Record'} {self.wavn // 48000} s")
 				if self.wavn >= self.WAVMAX * 48000:
 					QTimer.singleShot(0, self.rec_end)		# not from inside poll: it may stop the audio poll is still using
 			x = np.frombuffer(raw, '<i2') / 32768.0
@@ -2999,7 +3055,9 @@ class Shack(QMainWindow):
 		self.net, self.asked = QNetworkAccessManager(self), set()		# callook.info (where a US callsign is), the callsigns asked about since shack started
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
 		self.dec.onheard = self.heard
-		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.dec.recb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
+		self.dec.oniq = lambda f: isinstance(self.rig, Rspdx) and self.rig.send(f'iq {f or 0}')
+		self.dec.recname = lambda: f'{self.freq.hz / 1e6:.6f}-{self.mode.currentText()}'
+		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.dec.recb, self.dec.iqb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
 		self.smeter = QProgressBar(minimum=-54, maximum=60, value=-54, format='S0')		# 705: S-units; RSPdx: dBFS (open_rx)
 		self.swr = QLabel(toolTip='The radio\'s SWR meter while transmitting; the last reading stays until the next transmission')
 		self.tx = QLabel('RX')
@@ -3101,6 +3159,7 @@ class Shack(QMainWindow):
 		more.addWidget(hb)
 		more.addWidget(self.dec.scopeb)
 		more.addWidget(self.dec.recb)
+		more.addWidget(self.dec.iqb)
 		more.addStretch()
 		row += 1
 		g.addLayout(more, row, 0, 1, 3)
@@ -4063,6 +4122,8 @@ class Shack(QMainWindow):
 		elif k == 'bars':		# TH-D75: its 0-5 meter
 			self.smeter.setValue(v)
 			self.smeter.setFormat(f'{v} of 5')
+		elif k == 'iq':
+			self.dec.iq_done(v)
 		elif k == 'meter':		# RSPdx: ADC dBFS, signal dBFS, blanker pulses/s
 			adc, sig, nbr = v
 			self.adc.setValue(round(max(-60, min(0, adc))))

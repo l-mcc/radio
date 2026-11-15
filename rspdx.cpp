@@ -4,6 +4,7 @@
 #include "waterfall.h"
 #include "demod.h"
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -58,6 +59,8 @@ class DigiOut {		// decoder feed: 48 kHz s16le mono over UDP to 127.0.0.1:7355, 
 // ---------------------------------------------------------
 //
 // ---------------------------------------------------------
+
+const uint64_t IQ_MAX = 1ull << 30;		// bytes: an I/Q recording stops itself here (about 4 minutes at 500 kS/s)
 
 std::string state_json(const Control::State &s) {		// rspdx -n stdout line; same fields as the waterfall page gets, plus ovln, nb, nr, digi, bw and wf
 	std::string mode = s.mode;
@@ -191,6 +194,20 @@ int main(int argc, char** argv) {
 	uint64_t meter_count = 0;
 
 	std::unique_ptr<DigiOut> digi;		// follows digi_on (d key, :digi); not saved
+	FILE *iqf = nullptr;		// I/Q recording: follows iq_path (iq command); the blocks as they come from the API, 16-bit I, Q pairs
+	std::string iq_open;
+	uint64_t iq_count = 0;
+	double iq_rate = 0, iq_hz = 0;
+	std::vector<int16_t> iq16;
+	auto iq_close = [&](const char *why) {		// tells shack.py what the file holds
+		if (iqf) fclose(iqf);
+		if (headless && (iqf || *why)) {
+			printf("{\"type\":\"iq\",\"file\":%s,\"rate\":%.0f,\"hz\":%.0f,\"n\":%llu,\"why\":%s}\n", json_text(iq_open).c_str(), iq_rate, iq_hz, static_cast<unsigned long long>(iq_count), json_text(why).c_str());
+			fflush(stdout);
+		}
+		iqf = nullptr;
+		iq_open = iq_path = "";
+	};
 	auto process = [&](const IQ &block) {
 		double t0 = thread_cpu_seconds();
 		for (const auto &sample : block) meter_power += 0.5 * std::norm(sample);
@@ -217,6 +234,7 @@ int main(int argc, char** argv) {
 				speaker = std::make_unique<Audio>(static_cast<unsigned int>(demod->audio_rate), demod->name);
 				speaker->open();
 				while (queue.pop(iq)) {}		// old rate, old LO
+				if (iqf) iq_close("the mode changed");		// another sample rate
 				if (wf) wf->configure(demod->zooms);
 				if (digi) digi = std::make_unique<DigiOut>(demod->audio_rate);		// new audio rate
 			}
@@ -231,12 +249,34 @@ int main(int argc, char** argv) {
 		if (queue.pop(iq)) {
 			process(iq);
 			if (wf) wf->push(iq.data(), iq.size());		// outside the DSP timing so the figure stays comparable
+			if (iqf) {
+				iq16.resize(2 * iq.size());
+				for (size_t i = 0; i < iq.size(); i++) {		// back to the API's own 16-bit samples
+					iq16[2 * i] = static_cast<int16_t>(std::lrint(std::clamp(iq[i].real() * 32768.0f, -32768.0f, 32767.0f)));
+					iq16[2 * i + 1] = static_cast<int16_t>(std::lrint(std::clamp(iq[i].imag() * 32768.0f, -32768.0f, 32767.0f)));
+				}
+				iq_count += iq.size();
+				if (fwrite(iq16.data(), sizeof(int16_t), iq16.size(), iqf) != iq16.size()) iq_close(std::strerror(errno));
+				else if (iq_count * 4 >= IQ_MAX) iq_close("1 GB");
+			}
 		} else {
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 
 		auto now = std::chrono::steady_clock::now();
 		if (digi_on != bool(digi)) digi = digi_on ? std::make_unique<DigiOut>(demod->audio_rate) : nullptr;
+		if (iq_path != iq_open) {		// iq command: start, stop, or another file
+			std::string want = iq_path;
+			if (iqf) iq_close("");
+			if (!want.empty()) {
+				iq_open = iq_path = want;
+				iq_count = 0;
+				iq_rate = demod->rate();
+				iq_hz = control.state().rf_mhz * 1e6;		// the file's 0 Hz
+				iqf = fopen(want.c_str(), "wb");
+				if (!iqf) iq_close(std::strerror(errno));
+			}
+		}
 		demod->tap = bool(digi);
 		demod->nb = nb_on;
 		demod->nb_db = nb_db;
@@ -283,6 +323,7 @@ int main(int argc, char** argv) {
 	stopping = 1;
 	rsp.stop();
 	while (queue.pop(iq)) process(iq);
+	if (iqf) iq_close("rspdx stopped");
 	speaker->flush();
 	speaker->close();
 
