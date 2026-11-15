@@ -18,28 +18,61 @@
 #include <sys/resource.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#include <liquid/liquid.h>
+#include <numeric>
 #include <vector>
 
 namespace {
+class Resample {		// exact rational resampler (up/down) for the decoder feed: one filter phase per output position, so no phase rounding (liquid's msresamp left copies of every tone 4 kHz away, 60 dB down)
+	public:
+		Resample(unsigned int up, unsigned int down) : up(up), down(down), taps(up * n), line(n) {
+			const double beta = 0.1102 * (80.0 - 8.7), mid = (up * n - 1) / 2.0;		// Kaiser window, 80 dB; low-pass at half the lower of the two rates
+			std::vector<double> h(up * n);
+			for (unsigned int t = 0; t < up * n; ++t) {
+				double u = (t - mid) / std::max(up, down), r = (t - mid) / mid;
+				h[t] = (u == 0 ? 1.0 : std::sin(M_PI * u) / (M_PI * u)) * std::cyl_bessel_i(0.0, beta * std::sqrt(std::max(0.0, 1.0 - r * r)));
+			}
+			for (unsigned int p = 0; p < up; ++p) {		// phase p: every up'th tap from p, unity gain
+				double sum = 0;
+				for (unsigned int k = 0; k < n; ++k) sum += h[p + k * up];
+				for (unsigned int k = 0; k < n; ++k) taps[p * n + k] = static_cast<float>(h[p + k * up] / sum);
+			}
+		}
+		void run(const std::vector<float> &x, std::vector<float> &y) {		// appends to y
+			for (float v : x) {
+				line[pos] = v;
+				for (; phase < up; phase += down) {
+					const float *g = &taps[phase * n];
+					float acc = 0;
+					for (unsigned int k = 0; k < n; ++k) acc += g[k] * line[(pos + n - k) % n];
+					y.push_back(acc);
+				}
+				phase -= up;
+				pos = (pos + 1) % n;
+			}
+		}
+
+	private:
+		static constexpr unsigned int n = 32;		// taps per phase
+		unsigned int up, down, phase = 0, pos = 0;
+		std::vector<float> taps, line;
+};		// class Resample
+
 class DigiOut {		// decoder feed: 48 kHz s16le mono over UDP to 127.0.0.1:7355, gqrx's format (direwolf reads udp:7355)
 	public:
-		explicit DigiOut(double rate) : ratio(48000.0 / rate), rs(msresamp_rrrf_create(ratio, 60.0f)) {
+		explicit DigiOut(double rate) : rs(48000 / std::gcd(48000u, unsigned(std::lround(rate))), unsigned(std::lround(rate)) / std::gcd(48000u, unsigned(std::lround(rate)))) {		// 10 kHz (SSB): 24/5, 20 kHz (AM): 12/5, 24 kHz (WBFM): 2/1
 			fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 			to.sin_family = AF_INET;
 			to.sin_port = htons(7355);
 			to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 		}
 		~DigiOut() {
-			msresamp_rrrf_destroy(rs);
 			if (fd >= 0) close(fd);
 		}
 		void write(std::vector<float> &x) {
 			if (x.empty() || fd < 0) return;
-			out.resize(static_cast<size_t>(x.size() * ratio) + 64);
-			unsigned int n = 0;
-			msresamp_rrrf_execute(rs, x.data(), x.size(), out.data(), &n);
-			for (unsigned int i = 0; i < n; ++i) pcm.push_back(static_cast<int16_t>(std::lround(std::clamp(out[i], -1.0f, 1.0f) * 32767)));
+			out.clear();
+			rs.run(x, out);
+			for (float v : out) pcm.push_back(static_cast<int16_t>(std::lround(std::clamp(v, -1.0f, 1.0f) * 32767)));
 			size_t sent = 0;
 			for (; pcm.size() - sent >= packet; sent += packet)		// nobody listening is fine: the datagrams just drop
 				sendto(fd, pcm.data() + sent, packet * 2, MSG_DONTWAIT, reinterpret_cast<sockaddr *>(&to), sizeof to);
@@ -48,8 +81,7 @@ class DigiOut {		// decoder feed: 48 kHz s16le mono over UDP to 127.0.0.1:7355, 
 
 	private:
 		static constexpr size_t packet = 480;		// 10 ms per datagram
-		double ratio;
-		msresamp_rrrf rs;
+		Resample rs;
 		int fd = -1;
 		sockaddr_in to{};
 		std::vector<float> out;
