@@ -130,13 +130,15 @@ public:
 			hp_previous = sample;
 			hp_output = hp;
 			float mag = std::fabs(hp);
-			if (mag > agc_env) {
+			int k = std::clamp(agc, 0, 3);
+			if (!k) {		// off: the gain stays where it was
+			} else if (mag > agc_env) {
 				agc_env += agc_attack * (mag - agc_env);
-				agc_hang = agc_hang_samples;
+				agc_hang = agc_hangs[k];
 			} else if (agc_hang > 0) {
 				--agc_hang;
 			} else {
-				agc_env += agc_release * (mag - agc_env);
+				agc_env += agc_releases[k] * (mag - agc_env);
 			}
 			float gain = std::clamp(agc_target / std::max(agc_env, 1e-9f), agc_min_gain, agc_max_gain);
 			sample = hp * gain;
@@ -165,8 +167,9 @@ private:
 	static constexpr float agc_max_gain = 500.0f;		// caps how far noise is raised between signals
 	static constexpr float hp_alpha = 0.95213f;		// ~80 Hz, below the lowest filter edge
 	const float agc_attack = 1.0f - std::exp(-1.0f / (audio_rate * 0.002f));		// 2 ms
-	const float agc_release = 1.0f - std::exp(-1.0f / (audio_rate * 0.5f));		// 500 ms
-	const int agc_hang_samples = static_cast<int>(audio_rate * 0.5f);		// hold 500 ms before releasing
+	float release(float s) const { return 1.0f - std::exp(-1.0f / (audio_rate * s)); }
+	const std::array<float, 4> agc_releases = {0.0f, release(2.0f), release(0.5f), release(0.1f)};		// off, slow 2 s, mid 500 ms, fast 100 ms
+	const std::array<int, 4> agc_hangs = {0, static_cast<int>(audio_rate * 1.0f), static_cast<int>(audio_rate * 0.5f), 0};		// held this long before releasing: slow 1 s, mid 500 ms, fast none
 	bool usb;
 	int low = 0, high = 0;
 	firfilt_cccf voice = nullptr;

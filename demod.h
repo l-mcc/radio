@@ -53,6 +53,7 @@ public:
 	bool nb = false;		// noise blanker on the 100 kS/s IQ (SSB, AM); rspdx follows nb_on, nb_db
 	float nb_db = 12;		// trigger: this far over the running power
 	uint64_t nb_pulses = 0;		// pulses blanked; the caller reads and resets
+	int agc = 2;		// SSB AGC: 0 off (gain held where it is), 1 slow, 2 mid, 3 fast; rspdx follows agc_speed
 	bool nr = false;		// RNNoise on the audio after the decoder tap; rspdx follows nr_on
 protected:
 	void finish(std::vector<float> &audio, float vol, bool limit = true, bool denoise = true);		// audio holds the pre-volume signal; copies it to clean if tapped, denoises if nr (and the mode allows it), then applies volume

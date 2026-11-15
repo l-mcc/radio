@@ -88,6 +88,7 @@ void set_ssb_bw(int index);
 extern bool wf_on;		// waterfall wanted (-w); the receiver creates or drops it
 extern std::string iq_path;		// I/Q recording wanted, to this file (iq command); empty = none
 extern bool digi_on;		// decoder feed wanted: 48 kHz s16 mono, UDP 127.0.0.1:7355
+extern int agc_speed;		// SSB AGC: 0 off (gain held), 1 slow, 2 mid, 3 fast (agc command)
 extern bool nb_on;		// noise blanker wanted (SSB, AM)
 extern int nb_db;		// its trigger, dB over the running power
 extern bool nr_on;		// noise reduction (RNNoise) wanted

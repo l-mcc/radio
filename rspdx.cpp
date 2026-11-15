@@ -92,6 +92,7 @@ class DigiOut {		// decoder feed: 48 kHz s16le mono over UDP to 127.0.0.1:7355, 
 //
 // ---------------------------------------------------------
 
+const char *const AGC_NAMES[] = {"off", "slow", "mid", "fast"};		// agc_speed 0-3, as the state line says it
 const uint64_t IQ_MAX = 1ull << 30;		// bytes: an I/Q recording stops itself here (about 4 minutes at 500 kS/s)
 
 std::string state_json(const Control::State &s) {		// rspdx -n stdout line; same fields as the waterfall page gets, plus ovln, nb, nr, digi, bw and wf
@@ -99,9 +100,9 @@ std::string state_json(const Control::State &s) {		// rspdx -n stdout line; same
 	for (auto &ch : mode) ch = toupper(ch);
 	char b[400];
 	snprintf(b, sizeof b, "{\"type\":\"state\",\"state\":{\"mhz\":%.6f,\"mode\":\"%s\",\"v\":%.2f,\"if\":%d,\"lna\":%d,\"ant\":\"%c\","
-		"\"notch\":%d,\"dab\":%d,\"hdr\":%d,\"ovl\":%d,\"ovln\":%llu,\"ref\":%.1f,\"zoom\":%d,\"nb\":%d,\"nr\":%d,\"digi\":%d,\"bw\":%d,\"wf\":%d}}", s.mhz, mode.c_str(),
+		"\"notch\":%d,\"dab\":%d,\"hdr\":%d,\"ovl\":%d,\"ovln\":%llu,\"ref\":%.1f,\"zoom\":%d,\"nb\":%d,\"nr\":%d,\"digi\":%d,\"bw\":%d,\"wf\":%d,\"agc\":\"%s\"}}", s.mhz, mode.c_str(),
 		s.volume, s.if_reduction, s.lna, s.antenna, s.rf_notch, s.dab_notch, s.hdr, s.overload, static_cast<unsigned long long>(s.overload_count),
-		s.ref, s.zoom, nb_on ? nb_db : 0, int(nr_on), int(digi_on), ssb_bw_index, int(wf_on));		// ovln: overloads since start, so short ones aren't missed
+		s.ref, s.zoom, nb_on ? nb_db : 0, int(nr_on), int(digi_on), ssb_bw_index, int(wf_on), AGC_NAMES[agc_speed & 3]);		// ovln: overloads since start, so short ones aren't missed
 	return b;
 }
 
@@ -311,6 +312,7 @@ int main(int argc, char** argv) {
 		}
 		demod->tap = bool(digi);
 		demod->nb = nb_on;
+		demod->agc = agc_speed;
 		demod->nb_db = nb_db;
 		demod->nr = nr_on;
 

@@ -33,6 +33,7 @@ HELP = '''
 <table cellspacing="4">
 <tr><td><b>Mode</b></td><td>LSB, USB, AM, WBFM (broadcast FM)</td></tr>
 <tr><td><b>Volume</b></td><td>0 to 1</td></tr>
+<tr><td><b>AGC</b></td><td>SSB only (AM levels itself on the carrier). Fast: back up in 100 ms; Mid: holds 0.5 s, back up in 0.5 s; Slow: holds 1 s, back up in 2 s (steadier for FT8, JS8, WSPR); Off: the gain stays where it was when you switched it off, so set the level with IF reduction. Kept in bookmarks</td></tr>
 <tr><td><b>IF reduction</b></td><td>20-59 dB; more = less gain</td></tr>
 <tr><td><b>LNA reduction</b></td><td>0 = most gain; the top end depends on the band</td></tr>
 <tr><td><b>Antenna</b></td><td>A, B or C</td></tr>
@@ -561,6 +562,7 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 
 class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON lines on its stdout; same face as civ.Rig
 	MODES = ['LSB', 'USB', 'AM', 'WBFM']
+	AGCS = {'Fast': 'fast', 'Mid': 'mid', 'Slow': 'slow', 'Off': 'off'}		# AGC box: rspdx's agc command
 	BANDWIDTHS = ['Narrow voice  1.8 kHz', 'Normal voice  2.8 kHz', 'Wide voice  3.1 kHz', 'Digital  2.8 kHz']		# bw 0-3, SSB only
 	SWITCHES = {'notch': 'RF notch', 'dab': 'DAB notch', 'hdr': 'HDR', 'digi': 'Digital out', 'wf': 'Waterfall', 'nb': 'Noise blanker', 'nr': 'Noise reduction'}		# rspdx command: button
 
@@ -625,6 +627,8 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 		self.emit('mhz', st['mhz'])
 		for k in ('mode', 'v', 'if', 'lna', 'ant', 'bw', *self.SWITCHES):
 			self.emit(k, st[k])
+		if 'agc' in st:		# an rspdx from before 2026-11-15 has none
+			self.emit('agc', st['agc'])
 		self.emit('ovl', (st['ovl'], st['ovln']))
 	# show
 
@@ -632,7 +636,7 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 		what a bookmark keeps for the RSPdx, and putting it back
 	-------------------------------------------------------------------'''
 
-	KEEP = ('v', 'if', 'lna', 'ant', 'notch', 'dab', 'hdr', 'bw', 'nb', 'nr', 'ref')		# ref: the waterfall's reference level, dB
+	KEEP = ('v', 'if', 'lna', 'ant', 'notch', 'dab', 'hdr', 'bw', 'nb', 'nr', 'ref', 'agc')		# ref: the waterfall's reference level, dB
 
 	def settings(self):
 		return {k: self.state[k] for k in self.KEEP if k in self.state}
@@ -686,6 +690,8 @@ class Rspdx:		# rspdx -n (RSPdx) as a child process: commands on its stdin, JSON
 			self.send(f'ant {v.lower()}')
 		elif k == 'bw':
 			self.send(f'bw {v}')
+		elif k == 'agc':
+			self.send(f'agc {v}')
 		elif k == 'ref':
 			self.send(f'ref {v:g}')
 		elif k in self.SWITCHES:		# on/off
@@ -2911,7 +2917,7 @@ class Shack(QMainWindow):
 		self.pwrv.setFixedWidth(self.pwrv.fontMetrics().horizontalAdvance('10.0 W  '))
 		self.pwr.sliderMoved.connect(lambda v: self.pwrv.setText(self.pwr_text(v)))		# readout follows the drag
 		self.pwr.valueChanged.connect(lambda v: self.pwrv.setText(self.pwr_text(v)))
-		self.agc = QComboBox(toolTip='The radio\'s AGC')
+		self.agc = QComboBox(toolTip='The radio\'s AGC. RSPdx: SSB only; Off holds the gain where it is (set the level with IF reduction)')
 		self.agc.activated.connect(lambda i: self.rig and self.rig.set('agc', self.agcs[self.agc.itemText(i)]))
 		self.agcs = {}		# label: 16 12 value, per radio (civ.RIGS)
 		self.pa = QComboBox(toolTip='Preamp: IPO = none (strong signals, low bands), AMP1, AMP2 = most gain')
@@ -3371,7 +3377,11 @@ class Shack(QMainWindow):
 			return self.oops(f"Can't find rspdx at {self.a.rspdx}.\n\nIs it built? (./build.sh)")
 		self.rig = Rspdx(self.a.rspdx, self.got.emit, self.bm.last('RSPdx'))
 		self.smeter.setRange(-100, -40)		# the TUI's signal scale, dBFS in the passband
-		self.show_radio('RSPdx', Rspdx.MODES, 2000, (self.freq, self.mode, self.vol, self.smeter, *self.rsp))		# no PTT on a receiver
+		self.agcs = Rspdx.AGCS
+		quiet(self.agc, self.agc.clear)
+		quiet(self.agc, self.agc.addItems, list(self.agcs))
+		quiet(self.agc, self.agc.setCurrentText, 'Mid')		# rspdx's own start; its first state line says what it really is
+		self.show_radio('RSPdx', Rspdx.MODES, 2000, (self.freq, self.mode, self.vol, self.agc, self.smeter, *self.rsp))		# no PTT on a receiver
 		self.dec.opened(None)		# decoders read Digital out
 		self.show_bms()
 		return
