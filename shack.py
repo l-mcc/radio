@@ -6,6 +6,7 @@ from pathlib import Path
 
 import serial
 from PyQt6.QtCore import pyqtSignal, QEvent, QPointF, QProcess, QProcessEnvironment, QRect, QSize, Qt, QTimer, QUrl
+from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
@@ -59,7 +60,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>Heard (right)</h3>
-<p>Stations the Packet decoder has heard, kept in bookmarks.db: one row for each callsign at each dial frequency. The tab shows every frequency on every band and fills in as packets arrive (click MHz to group them by frequency). Hits counts its packets; Last is when the latest came (today: the time, otherwise the date too); FEC says FX.25 or IL2P; Via is the digipeater when you didn't hear the station itself (the digipeater gets its own row: it's the one you heard); Text is its last beacon. Rest the mouse on a row for when it was first heard, direwolf's audio level and the whole text. Click a column heading to sort by it, again for the other way; remembered. Double-click: go to that frequency and mode with the decoder that heard it. Right-click: forget one station, or clear the whole list.</p>
+<p>Stations the Packet decoder has heard, kept in bookmarks.db: one row for each callsign at each dial frequency. The tab shows every frequency on every band and fills in as packets arrive (click MHz to group them by frequency). Hits counts its packets; Last is when the latest came (today: the time, otherwise the date too); FEC says FX.25 or IL2P (blank: plain AX.25); Svc is what the station has said it offers, gathered from its packets: bbs (a mailbox: 'Mail for' beacons, a BBS greeting), node, em (Winlink / email), chat, aprs, digi (it relayed someone else's packet); blank = nothing seen yet; Miles is how far it is from your grid (decoder right-click > My grid): from the grid in its beacon if it sends one, otherwise US callsigns are looked up once at callook.info (the FCC's address for the licence; other countries stay blank); Clicked counts your double-clicks on it; Via is the digipeater when you didn't hear the station itself (the digipeater gets its own row: it's the one you heard); Text is its last beacon. Rest the mouse on a row for when it was first heard, direwolf's audio level and the whole text. Click a column heading to sort by it, again for the other way; remembered. Double-click the callsign: its QRZ page (the same window the decoders use). Double-click anywhere else on the row: go to that frequency and mode with the decoder that heard it. Right-click: look up on QRZ, forget one station, or clear the whole list.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. CI-V can't read which one the radio is on, so opening the IC-705 or Xiegu puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. To send mail: right-click > Compose a message (To, Cc, Subject, text; Put in the outbox), then double-click a gateway (or right-click it > Connect): shack sets Modem to Transmit if it isn't, Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. When Pat is done (or you stop it) shack sets Modem back to Off. The menu says how many messages are waiting in the outbox. Right-click > Stop Pat gives up on a connect. Right-click a gateway > Add as a Pat alias puts it in Pat's config (connect_aliases, named like ko4hjo-7100.5) for pat connect and Pat's own Connect list; it shows with a ★ here, and the same menu item removes it. Right-click > Mail opens Pat's mailbox here (no browser): Inbox, Outbox, Sent, Archive; unread messages are bold and are marked read when you open them; Reply (to the sender), Reply all, Save attachments, Archive, Delete, Compose. After a connect the bottom line says how many are unread. BUSY in the bottom left corner of the window (there while the modem runs) is red while xara (the modem) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
@@ -389,6 +390,11 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 		self.db.execute("CREATE TABLE IF NOT EXISTS prefs (k TEXT PRIMARY KEY, v TEXT NOT NULL)")		# the table's sort
 		self.db.execute("CREATE TABLE IF NOT EXISTS heard (call TEXT NOT NULL, hz INTEGER NOT NULL, mode TEXT NOT NULL, dec TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 1, first TEXT NOT NULL, last TEXT NOT NULL,"
 			" level INTEGER, fec TEXT NOT NULL DEFAULT '', via TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', PRIMARY KEY (call, hz, mode, dec))")		# stations the decoders heard
+		have = {r[1] for r in self.db.execute('PRAGMA table_info(heard)')}
+		for col, kind in (('clicks', 'INTEGER NOT NULL DEFAULT 0'), ('svc', "TEXT NOT NULL DEFAULT ''")):		# added 2026-11-15
+			if col not in have:
+				self.db.execute(f'ALTER TABLE heard ADD COLUMN {col} {kind}')
+		self.db.execute("CREATE TABLE IF NOT EXISTS grids (call TEXT PRIMARY KEY, grid TEXT NOT NULL)")		# where a callsign (no SSID) is: from its beacon or callook.info; '' = looked up, not found
 		if new and Path(old).exists():
 			self.copy_rspdx(old)
 		self.db.commit()
@@ -489,29 +495,52 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 	'''-------------------------------------------------------------------
 		a station a decoder heard: one row per callsign, dial frequency, radio mode and decoder; hits counts up, first and last are local time
 		level: the decoder's own reading of the last frame (direwolf: its audio level); fec: FX.25 / IL2P; via: the digipeater it came through; text: its last beacon
+		svc: what it offers ('bbs', 'node'...), added to what the row already says
 	-------------------------------------------------------------------'''
 
-	def heard(self, call, hz, mode, dec, level=None, fec='', via='', text=''):
+	def heard(self, call, hz, mode, dec, level=None, fec='', via='', text='', svc=()):
 		now = time.strftime('%Y-%m-%d %H:%M:%S')
-		self.db.execute('INSERT INTO heard (call, hz, mode, dec, first, last, level, fec, via, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-			' ON CONFLICT (call, hz, mode, dec) DO UPDATE SET hits = hits + 1, last = excluded.last, level = excluded.level, fec = excluded.fec, via = excluded.via,'
-			" text = CASE WHEN excluded.text != '' THEN excluded.text ELSE heard.text END", (call, hz, mode, dec, now, now, level, fec, via, text))
+		key = (call, hz, mode, dec)
+		row = self.db.execute('SELECT svc FROM heard WHERE call = ? AND hz = ? AND mode = ? AND dec = ?', key).fetchone()
+		svc = ', '.join(sorted(set(svc) | set(row[0].split(', ') if row and row[0] else ())))
+		self.db.execute('INSERT INTO heard (call, hz, mode, dec, first, last, level, fec, via, text, svc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+			' ON CONFLICT (call, hz, mode, dec) DO UPDATE SET hits = hits + 1, last = excluded.last, level = excluded.level, fec = excluded.fec, via = excluded.via, svc = excluded.svc,'
+			" text = CASE WHEN excluded.text != '' THEN excluded.text ELSE heard.text END", (*key, now, now, level, fec, via, text, svc))
 		self.db.commit()
 		return
 	# heard
+
+	def clicked(self, h):		# a row of the heard list was double-clicked
+		self.db.execute('UPDATE heard SET clicks = clicks + 1 WHERE call = ? AND hz = ? AND mode = ? AND dec = ?', (h['call'], h['hz'], h['mode'], h['dec']))
+		self.db.commit()
+		return
+
+	def grid(self, call):		# a callsign's grid: None = never looked for, '' = not found
+		row = self.db.execute('SELECT grid FROM grids WHERE call = ?', (call,)).fetchone()
+		return row[0] if row else None
+
+	def set_grid(self, call, grid):
+		self.db.execute('INSERT OR REPLACE INTO grids (call, grid) VALUES (?, ?)', (call, grid))
+		self.db.commit()
+		return
 
 	'''-------------------------------------------------------------------
 		the heard list, sorted by a column of the table (HEARD), down = Z-A / high to low / newest first; ties newest first
 		unheard: forgets one row (h), or the whole list
 	-------------------------------------------------------------------'''
 
-	HEARD = ('call', 'hz', 'hits', 'last', 'fec', 'via', 'text')
+	HEARD = ('call', 'hz', 'hits', 'last', 'fec', 'svc', 'miles', 'clicks', 'via', 'text')
 
-	def heards(self, col=3, down=True):
-		cols = ('call', 'hz', 'mode', 'dec', 'hits', 'first', 'last', 'level', 'fec', 'via', 'text')
+	def heards(self, col=3, down=True, home=None):		# home: (lat, lon), for miles
+		cols = ('call', 'hz', 'mode', 'dec', 'hits', 'first', 'last', 'level', 'fec', 'via', 'text', 'clicks', 'svc')
 		out = [dict(zip(cols, row)) for row in self.db.execute(f"SELECT {', '.join(cols)} FROM heard ORDER BY last DESC")]
-		k = self.HEARD[col]
-		return sorted(out, key=lambda h: h[k].casefold() if isinstance(h[k], str) else h[k], reverse=down)		# stable: ties stay newest first
+		grids = dict(self.db.execute('SELECT call, grid FROM grids'))
+		for h in out:
+			h['grid'] = grids.get(h['call'].split('-')[0])
+			ll = grid_ll(h['grid']) if h['grid'] else None
+			h['miles'] = round(path(home, ll)[0]) if home and ll else None
+		k = self.HEARD[min(col, len(self.HEARD) - 1)]
+		return sorted(out, key=lambda h: h[k].casefold() if isinstance(h[k], str) else -1 if h[k] is None else h[k], reverse=down)		# stable: ties stay newest first
 	# heards
 
 	def unheard(self, h=None):
@@ -1497,8 +1526,10 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	DE = re.compile(r'\bde ([A-Z0-9]+(?:-\d{1,2})?)\b')		# VarAC text: '15 de N5IMC <R+08>'
 	CALL = re.compile(r'(?=.*\d)(?=.*[A-Z])[A-Z0-9]{3,7}(-\d{1,2})?')		# a callsign, not a #hash
 	LEVEL = re.compile(r'^(Digipeater )?(\S+)(?: \(probably (\S+)\))? audio level = (\d+)\(\S*\)\s+(FX\.25|IL2P)?')		# direwolf's first line for a packet: who was on the air, how loud, error correction
-	FRAME = re.compile(r'^\[\d[^\]]*\] ([A-Z0-9-]+)>[A-Z0-9-]+(?:,[A-Z0-9-]+\*?)*:(.*)')		# its second: '[0.2] FROM>TO,DIGI*:' and what the packet holds
+	FRAME = re.compile(r'^\[\d[^\]]*\] ([A-Z0-9-]+)>([A-Z0-9-]+)(?:,[A-Z0-9-]+\*?)*:(.*)')		# its second: '[0.2] FROM>TO,DIGI*:' and what the packet holds
 	LINK = re.compile(r'^\((I|RR|RNR|REJ|SREJ|SABME?|DISC|DM|UA|FRMR|XID|TEST) ')		# a connected-mode frame; anything else is a beacon's text
+	SVC = (('bbs', re.compile(r'mail for|\bbbs\b|\bpbbs\b|\[[A-Za-z0-9]+-[\w.]+(-[\w$#]+)?\]', re.I)),		# what a packet's text says its station offers; [BPQ-6.0.22-...] is a BBS greeting
+		('node', re.compile(r'\bnode\b|net/?rom', re.I)), ('em', re.compile(r'winlink|\brms\b|e-?mail', re.I)), ('chat', re.compile(r'\bchat\b', re.I)))
 
 	'''-------------------------------------------------------------------
 		digi(): turns the radio's Digital out on
@@ -1526,7 +1557,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.wav, self.wavn = None, 0		# Record button: the open /tmp/x.wav, samples written to it
 		self.lines = {}		# JS8: offset Hz: (cursor at the start of that message's line, when its last frame came, the line's start); a message's frames join one line
 		self.logging, self.logged = False, None		# Log button; logged: the decoder the file's last header was for
-		self.onheard, self.pkh = None, None		# onheard(call, decoder, level, fec, via, text): a station was heard (shack sets it); pkh: direwolf's 'audio level' line, waiting for its packet line
+		self.onheard, self.pkh = None, None		# onheard(call, decoder, level, fec, via, text, svc): a station was heard (shack sets it); pkh: direwolf's 'audio level' line, waiting for its packet line
 		self.load()
 		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, PSK31, Olivia, VARA, ARDOP (ardopcf), packet, JS8 (through JS8Call), FT4, FT8 (jt9) or WSPR (wsprd). Right-click for settings')
 		self.pick.addItems(self.KINDS)
@@ -1683,16 +1714,18 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			return
 		m = self.FRAME.match(line)
 		if m and self.onheard:
-			src, info = m[1], m[2]
+			src, dst, info = m[1], m[2], m[3]
 			who, level, fec, digi = self.pkh or (src, None, '', False)
 			self.pkh = None
 			text = '' if self.LINK.match(info) else re.sub(r'(<0x0[ad]>)+', ' ', info).strip()[:200]
+			svc = {k for k, rx in self.SVC if rx.search(info)}
+			svc |= {'bbs'} if dst == 'MAIL' else {'node'} if dst == 'NODES' else {'aprs'} if dst.startswith('AP') and not self.LINK.match(info) else set()
 			if digi and who != src:
 				if not who.startswith(('WIDE', 'RELAY', 'TRACE')):		# an alias, not a station
-					self.onheard(who, 'Packet', level, fec)
-				self.onheard(src, 'Packet', level, fec, who, text)
+					self.onheard(who, 'Packet', level, fec, svc=('digi',))
+				self.onheard(src, 'Packet', level, fec, who, text, svc)
 			else:
-				self.onheard(src, 'Packet', level, fec, '', text)
+				self.onheard(src, 'Packet', level, fec, '', text, svc)
 		return
 	# pkseen
 
@@ -2945,12 +2978,12 @@ class Shack(QMainWindow):
 		self.gwlist, self.gwband, self.pat, self.rmsp = [], None, None, None		# rows shown, their band, a running pat connect, a running rms.py
 		self.gwwait, self.gwnext = QTimer(interval=500, timeout=self.gw_ready), None		# a connect waiting for the modem: (call, url, give up at)
 		self.mailw = None		# the Mail window, once opened
-		self.hds = QTableWidget(0, 7, toolTip='Stations the Packet decoder has heard, every frequency.  Double-click: go to where it was heard.  Right-click: forget one, or clear the list.  Click a column heading to sort by it (again: the other way).')
-		self.hds.setHorizontalHeaderLabels(['Call', 'MHz', 'Hits', 'Last', 'FEC', 'Via', 'Text'])
+		self.hds = QTableWidget(0, 10, toolTip='Stations the Packet decoder has heard, every frequency.  Double-click a callsign: its QRZ page; the rest of the row: go to where it was heard.  Right-click: look up, forget one, or clear the list.  Click a column heading to sort by it (again: the other way).')
+		self.hds.setHorizontalHeaderLabels(['Call', 'MHz', 'Hits', 'Last', 'FEC', 'Svc', 'Miles', 'Clicked', 'Via', 'Text'])
 		self.hds.verticalHeader().hide()
 		hd = self.hds.horizontalHeader()
 		hd.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-		hd.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)		# Text takes the spare width
+		hd.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)		# Text takes the spare width
 		self.hdsort = self.bm.pref('heard sort', [3, True])		# column, down: the latest heard first to start
 		hd.setSortIndicatorShown(True)
 		hd.setSectionsClickable(True)
@@ -2958,10 +2991,11 @@ class Shack(QMainWindow):
 		hd.sortIndicatorChanged.connect(self.hd_sort)		# as the bookmarks: the rows are sorted here, not by Qt (hdlist[row] must stay the row's station)
 		self.hds.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 		self.hds.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-		self.hds.cellDoubleClicked.connect(lambda r, c: self.hd_pick(r))
+		self.hds.cellDoubleClicked.connect(self.hd_pick)
 		self.hds.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.hds.customContextMenuRequested.connect(self.hd_menu)
 		self.hdlist = []		# rows shown
+		self.net, self.asked = QNetworkAccessManager(self), set()		# callook.info (where a US callsign is), the callsigns asked about since shack started
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
 		self.dec.onheard = self.heard
 		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.dec.recb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
@@ -4175,13 +4209,43 @@ class Shack(QMainWindow):
 		a decoder heard a station: into bookmarks.db's heard table, with where the radio is (dial frequency, mode)
 	-------------------------------------------------------------------'''
 
-	def heard(self, call, dec, level=None, fec='', via='', text=''):
+	def heard(self, call, dec, level=None, fec='', via='', text='', svc=()):
 		if self.rig:
-			self.bm.heard(call, self.freq.hz, self.mode.currentText(), dec, level, fec, via, text)
+			self.bm.heard(call, self.freq.hz, self.mode.currentText(), dec, level, fec, via, text, svc)
+			g = re.search(r'\b[A-R]{2}[0-9]{2}[A-Xa-x]{2}\b', text)		# a beacon that says where it is (6 characters: 4 would catch too much that isn't a grid)
+			if g:
+				self.bm.set_grid(call.split('-')[0], g[0])
 			if self.tabs.currentWidget() is self.hds:
 				self.show_hds()
 		return
 	# heard
+
+	'''-------------------------------------------------------------------
+		where a US callsign is (for Miles): asked of callook.info (the FCC's records, free, no account) once, the answer kept in bookmarks.db
+		no answer (offline): asked again the next time shack runs
+	-------------------------------------------------------------------'''
+
+	def locate(self, call):
+		if call in self.asked or not re.fullmatch(r'(A[A-L]|[KNW])[A-Z]?\d[A-Z]{1,3}', call):
+			return
+		self.asked.add(call)
+		r = self.net.get(QNetworkRequest(QUrl(f'https://callook.info/{call}/json')))
+		r.finished.connect(lambda: self.located(call, r))
+		return
+
+	def located(self, call, r):
+		try:
+			d = json.loads(bytes(r.readAll()))
+			grid = str((d.get('location') or {}).get('gridsquare') or '') if d.get('status') == 'VALID' else ''
+			if d.get('status') in ('VALID', 'INVALID') and self.bm.grid(call) is None:		# anything else (UPDATING, an error page): ask another day
+				self.bm.set_grid(call, grid if grid_ll(grid) else '')
+				if self.tabs.currentWidget() is self.hds:
+					self.show_hds()
+		except (ValueError, AttributeError) as e:
+			log.info(f'callook.info {call}: {r.errorString()} {e!r}')
+		r.deleteLater()
+		return
+	# located
 
 	def tab_shown(self, i):		# a tab on the right was picked: Gateways and Heard are filled when looked at
 		w = self.tabs.widget(i)
@@ -4199,16 +4263,19 @@ class Shack(QMainWindow):
 	def show_hds(self):
 		r = self.hds.currentRow()
 		was = (self.hdlist[r]['call'], self.hdlist[r]['hz']) if 0 <= r < len(self.hdlist) else None
-		self.hdlist = self.bm.heards(*self.hdsort)
+		self.hdlist = self.bm.heards(*self.hdsort, grid_ll(self.dec.grid))
 		self.hds.setRowCount(len(self.hdlist))
 		today = time.strftime('%Y-%m-%d')
 		for r, h in enumerate(self.hdlist):
+			if h['grid'] is None:
+				self.locate(h['call'].split('-')[0])
 			last = h['last'][11:16] if h['last'].startswith(today) else h['last'][5:16]		# today: HH:MM, before: MM-DD HH:MM
-			tip = f"{h['call']}   {h['hz'] / 1e6:.6f} {h['mode']}   {h['dec']}\nfirst heard {h['first']}\nlast heard {h['last']}\naudio level {h['level']}" + (f"\n{h['text']}" if h['text'] else '')
-			for c, x in enumerate((h['call'], f"{h['hz'] / 1e6:.6f}", str(h['hits']), last, h['fec'], h['via'], h['text'])):
+			tip = f"{h['call']}   {h['hz'] / 1e6:.6f} {h['mode']}   {h['dec']}\nfirst heard {h['first']}\nlast heard {h['last']}\naudio level {h['level']}" + (f"\ngrid {h['grid']}" if h['grid'] else '') + (f"\n{h['text']}" if h['text'] else '')
+			miles, clicks = '' if h['miles'] is None else str(h['miles']), str(h['clicks'] or '')
+			for c, x in enumerate((h['call'], f"{h['hz'] / 1e6:.6f}", str(h['hits']), last, h['fec'], h['svc'], miles, clicks, h['via'], h['text'])):
 				it = QTableWidgetItem(x)
 				it.setToolTip(tip)
-				if c in (1, 2):
+				if c in (1, 2, 6, 7):
 					it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 				self.hds.setItem(r, c, it)
 			if was == (h['call'], h['hz']):
@@ -4216,9 +4283,9 @@ class Shack(QMainWindow):
 		return
 	# show_hds
 
-	def hd_sort(self, col, order):		# a heading clicked: Qt's new arrow. A new column starts A-Z / low to high; Hits most first, Last newest first
+	def hd_sort(self, col, order):		# a heading clicked: Qt's new arrow. A new column starts A-Z / low to high; Hits and Clicked most first, Last newest first
 		down = order == Qt.SortOrder.DescendingOrder
-		if col != self.hdsort[0] and Bookmarks.HEARD[col] in ('hits', 'last'):
+		if col != self.hdsort[0] and Bookmarks.HEARD[col] in ('hits', 'last', 'clicks'):
 			down = True
 			quiet(self.hds.horizontalHeader(), self.hds.horizontalHeader().setSortIndicator, col, Qt.SortOrder.DescendingOrder)
 		self.hdsort = [col, down]
@@ -4228,11 +4295,15 @@ class Shack(QMainWindow):
 	# hd_sort
 
 	'''-------------------------------------------------------------------
-		double-click: the frequency and mode it was heard on, with the decoder that heard it
+		double-click: Clicked counts it; on the callsign its QRZ page, anywhere else the frequency and mode it was heard on, with the decoder that heard it
 	-------------------------------------------------------------------'''
 
-	def hd_pick(self, r):
+	def hd_pick(self, r, c):
 		h = self.hdlist[r]
+		self.bm.clicked(h)
+		self.show_hds()
+		if c == 0:
+			return self.dec.qrz(h['call'].split('-')[0])
 		if not self.rig or not self.can(h):
 			return self.statusBar().showMessage(f"The {self.radio.currentText()} can't tune {h['hz'] / 1e6:.6f} {h['mode']}", 5000)
 		self.rig.set('mode', h['mode'])
@@ -4244,17 +4315,20 @@ class Shack(QMainWindow):
 	# hd_pick
 
 	'''-------------------------------------------------------------------
-		right-click: forget the station under the mouse, or all of them (asks first)
+		right-click: QRZ's page for the station under the mouse, forget it, or forget all of them (asks first)
 	-------------------------------------------------------------------'''
 
 	def hd_menu(self, pos):
 		r = self.hds.rowAt(pos.y())
 		menu = QMenu(self)
+		qrz = menu.addAction(f"Look up {self.hdlist[r]['call'].split('-')[0]} on QRZ") if r >= 0 else None
 		one = menu.addAction(f"Forget {self.hdlist[r]['call']}") if r >= 0 else None
 		every = menu.addAction('Clear the whole list')
 		act = menu.exec(self.hds.viewport().mapToGlobal(pos))
 		if act is None:
 			return
+		if act == qrz:
+			return self.dec.qrz(self.hdlist[r]['call'].split('-')[0])
 		if act == one:
 			self.bm.unheard(self.hdlist[r])
 		elif act == every and QMessageBox.question(self, 'Heard', 'Forget every station heard, on every band?') == QMessageBox.StandardButton.Yes:
