@@ -3013,8 +3013,14 @@ class Shack(QMainWindow):
 		self.bms.verticalHeader().hide()
 		self.bms.setMinimumWidth(320)		# the button row is wide; don't let it squeeze the table away
 		hh = self.bms.horizontalHeader()
-		hh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-		hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)		# Name takes the spare width
+		hh.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)		# drag a column's edge; remembered
+		hh.setStretchLastSection(True)		# Hits takes what's left over, so the table fills the tab
+		fm = self.bms.fontMetrics()
+		widths = self.bm.pref('bm columns') or [fm.horizontalAdvance(x) + 16 for x in ('M' * 4 + 'x' * 32, '144.950000', 'USB-D', 'Hits ▲')]		# Name about 36 characters to start
+		for c, wd in enumerate(widths[:3]):
+			hh.resizeSection(c, wd)
+		self.bmcols = QTimer(singleShot=True, interval=500, timeout=lambda: self.bm.set_pref('bm columns', [hh.sectionSize(c) for c in range(3)]))		# once the dragging stops
+		hh.sectionResized.connect(lambda c, old, new: c < 3 and self.bmcols.start())
 		self.bmsort = self.bm.pref('sort', [3, True])		# column, down (Z-A / high to low): most picked first to start
 		hh.setSortIndicatorShown(True)
 		hh.setSectionsClickable(True)
