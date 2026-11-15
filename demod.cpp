@@ -318,8 +318,7 @@ Demod::~Demod() = default;		// here, where Denoise is complete
 
 void Demod::finish(std::vector<float> &audio, float vol, bool limit, bool denoise) {
 	if (tap) {
-		clean.resize(audio.size());
-		for (size_t i = 0; i < audio.size(); ++i) clean[i] = std::clamp(audio[i], -0.9f, 0.9f);
+		lim.run(audio, clean, audio_rate);
 	}
 	bool on = nr && denoise;
 	if (on != bool(den)) den = on ? std::make_unique<Denoise>(audio_rate) : nullptr;
