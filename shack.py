@@ -9,7 +9,7 @@ from PyQt6.QtCore import pyqtSignal, QEvent, QPointF, QProcess, QProcessEnvironm
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
-	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
+	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QSplitter, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
 import cat, civ, d75, styles
 try:		# decoders need numpy; without it shack still runs, the Decoder row says why
@@ -3192,16 +3192,18 @@ class Shack(QMainWindow):
 		g.setRowStretch(row, 1)		# spare height goes to the decoded text (or below the rows when it's hidden)
 		box = QWidget()
 		box.setLayout(g)
-		main = QHBoxLayout()
-		main.addWidget(box, 2)		# decoded lines get the wider share; the bookmarks' Name column gives it up
 		self.tabs.addTab(self.bms, 'Bookmarks')
 		self.tabs.addTab(self.gws, 'Gateways')
 		self.tabs.addTab(self.hds, 'Heard')
 		self.tabs.currentChanged.connect(self.tab_shown)
-		main.addWidget(self.tabs, 1)
-		top = QWidget()
-		top.setLayout(main)
-		self.setCentralWidget(top)
+		self.split = QSplitter(childrenCollapsible=False)		# drag the divider between the radio and the tabs; where it was left is remembered
+		self.split.addWidget(box)
+		self.split.addWidget(self.tabs)
+		self.split.setStretchFactor(0, 2)		# a wider window goes 2:1 to the decoded lines
+		self.split.setStretchFactor(1, 1)
+		self.splitsave = QTimer(singleShot=True, interval=500, timeout=lambda: self.tabs.isHidden() or self.bm.set_pref('split', self.split.sizes()))		# once the dragging stops; put back in only()
+		self.split.splitterMoved.connect(lambda *_: self.splitsave.start())
+		self.setCentralWidget(self.split)
 
 		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.sq, self.lamp, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.smeter, self.swr, self.power, self.pttrow, self.modemrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
@@ -3404,10 +3406,13 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def only(self, live):
+		hidden = self.tabs.isHidden()
 		for w in self.parts:
 			w.setVisible(w in live)
 			if w in self.labels:
 				self.labels[w].setVisible(w in live)
+		if hidden and not self.tabs.isHidden():		# the tabs come back (no radio = none): the divider where it was last left, 2:1 the first time
+			self.split.setSizes(self.bm.pref('split', [2000, 1000]))
 		return
 	# only
 
