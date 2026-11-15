@@ -60,7 +60,7 @@ HELP = '''
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
-<h3>Heard (right)</h3>
+<h3>Packet (right)</h3>
 <p>Stations the Packet decoder has heard, kept in bookmarks.db: one row for each callsign at each dial frequency. The tab shows every frequency on every band and fills in as packets arrive (click MHz to group them by frequency). Hits counts its packets; Last is when the latest came (today: the time, otherwise the date too); FEC says FX.25 or IL2P (blank: plain AX.25); Svc is what the station has said it offers, gathered from its packets: bbs (a mailbox: 'Mail for' beacons, a BBS greeting), node, em (Winlink / email), chat, aprs, digi (it relayed someone else's packet); blank = nothing seen yet; Miles is how far it is from your grid (decoder right-click > My grid): from the grid in its beacon if it sends one, otherwise US callsigns are looked up once at callook.info (the FCC's address for the licence; other countries stay blank); Clicked counts your double-clicks on it; Via is the digipeater when you didn't hear the station itself (the digipeater gets its own row: it's the one you heard); Text is its last beacon. The station the latest packet came from is green (with its digipeater, if it came through one), until the next packet. Rest the mouse on a row for when it was first heard, direwolf's audio level and the whole text. Click a column heading to sort by it, again for the other way; remembered. Double-click the callsign: its QRZ page (the same window the decoders use). Double-click anywhere else on the row: go to that frequency and mode with the decoder that heard it. Right-click: look up on QRZ, forget one station, or clear the whole list.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
@@ -3201,7 +3201,7 @@ class Shack(QMainWindow):
 		box.setLayout(g)
 		self.tabs.addTab(self.bms, 'Bookmarks')
 		self.tabs.addTab(self.gws, 'Gateways')
-		self.tabs.addTab(self.hds, 'Heard')
+		self.tabs.addTab(self.hds, 'Packet')
 		self.tabs.currentChanged.connect(self.tab_shown)
 		self.split = QSplitter(childrenCollapsible=False)		# drag the divider between the radio and the tabs; where it was left is remembered
 		self.split.addWidget(box)
@@ -4350,7 +4350,7 @@ class Shack(QMainWindow):
 	# tab_shown
 
 	'''-------------------------------------------------------------------
-		Heard tab: bookmarks.db's heard table, every frequency; the selected station stays selected when the table is filled again
+		Packet tab: bookmarks.db's heard table, every frequency; the selected station stays selected when the table is filled again
 	-------------------------------------------------------------------'''
 
 	HDLIT = '#8fd48f'		# the latest packet's row(s): green (selection is yellow)
@@ -4429,7 +4429,7 @@ class Shack(QMainWindow):
 			return self.dec.qrz(self.hdlist[r]['call'].split('-')[0])
 		if act == one:
 			self.bm.unheard(self.hdlist[r])
-		elif act == every and QMessageBox.question(self, 'Heard', 'Forget every station heard, on every band?') == QMessageBox.StandardButton.Yes:
+		elif act == every and QMessageBox.question(self, 'Packet', 'Forget every station heard, on every band?') == QMessageBox.StandardButton.Yes:
 			self.bm.unheard()
 		self.show_hds()
 		return
