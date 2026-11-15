@@ -1431,7 +1431,7 @@ class Scope:		# Spectrum button with no decoder running: the strip alone. Same f
 class Qrz:		# QRZ lookups in one browser window that's reused: its own Chromium profile with the DevTools port open (Chromium 136+ ignores the port on the everyday profile)
 	FLATPAK = 'io.github.ungoogled_software.ungoogled_chromium'
 	BROWSER = ['flatpak', 'run', FLATPAK]		# Debian's instead: ['chromium'], with PROFILE = Path.home() / '.config' / 'shack-qrz'
-	PORT = 9223
+	PORT = 9224		# not 9223: Debian's Chromium had that one, and a window of it still open would be reused for every lookup
 	PROFILE = Path.home() / '.var' / 'app' / FLATPAK / 'config' / 'shack-qrz'		# logged in to QRZ here once, remembered; inside the flatpak's own folder, the one place its sandbox can always write
 
 	'''-------------------------------------------------------------------

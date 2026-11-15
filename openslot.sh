@@ -138,7 +138,7 @@ if [ -n "$PAT" ]; then		# Pat's web page instead of OpenSlot; Pat gets xara's 83
 	WPID=$!
 	wait_for ${PATWEB##*:} $WPID || { echo "pat http didn't start: see pat.log"; exit 1; }
 	echo "pat: mail page http://$PATWEB (Ctrl-C here stops pat, xara and rigctld)"
-	xdg-open http://$PATWEB > /dev/null 2>&1 &
+	flatpak run io.github.ungoogled_software.ungoogled_chromium http://$PATWEB > /dev/null 2>&1 &		# ungoogled Chromium, as shack's QRZ window and rspdx's waterfall
 	wait $WPID
 else
 	"$OPENSLOT" --callsign $CALL --locator $GRID
