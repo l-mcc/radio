@@ -58,8 +58,8 @@ PO_705 = [(0, 0), (21, 0.5), (43, 1), (65, 1.5), (83, 2), (95, 2.5), (105, 3), (
 RIGS = {		# port: by-id pattern of the CI-V port; web: host of its web configurator (OpenX6X00 firmware: shack sets the screensaver there); audio: ALSA name of its USB sound card (receive audio for shack's decoders); top: MHz; att: 11 xx value for on; agc: 16 12 values; watts: power at 00 and 255 (None = show %); swr: 15 12 meter works; scope: sends its band scope over CI-V (27 00)
 	'IC-705': dict(port='*IC-705*if00', audio='plughw:CARD=CODEC', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None, swr=True, scope=True, po=PO_705,
 		vara=dict(drive=-15, pcm=103, pwr=255)),		# VARA transmit (shack's Modem): xara's drive dB, the card's PCM mixer step (0-128, 1 dB each), RF power 0-255. 100 % power: 9.8 W, ALC 0.08 (105: ALC 0.16; 115: 0.5-0.7; 127: 0.98; 2026-11-10)
-	'Xiegu x6200': dict(port='*1a86_USB_Dual_Serial*if02', audio='plughw:CARD=Device', baud=19200, modes=['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'NBFM', 'WBFM'], top=108, m26=True, web='x6200.local',		# its if00 is the radio's Linux console, never CI-V
-		att=0x01, agc={'Off': 0, 'Fast': 1, 'Slow': 2, 'Auto': 3}, watts=(1, 8), swr=False, scope=False),		# power below 1 W reads back as 00 FA; 15 12 always 0 (firmware as of 2026-10). m26: firmware 1.0.7 answers 04 with LSB while in broadcast FM; 26 00 tells the truth (06)
+	'Xiegu x6200': dict(port='*1a86_USB_Dual_Serial*if02', audio='plughw:CARD=Device', baud=19200, modes=['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'NBFM', 'WBFM'], top=108, m26=True, v07=True, web='x6200.local',		# its if00 is the radio's Linux console, never CI-V
+		att=0x01, agc={'Off': 0, 'Fast': 1, 'Slow': 2, 'Auto': 3}, watts=(1, 8), swr=False, scope=False),		# power below 1 W reads back as 00 FA; 15 12 always 0 (firmware as of 2026-10). m26: firmware 1.0.7 answers 04 with LSB while in broadcast FM; 26 00 tells the truth (06). v07: 07 alone reads the VFO (00 A, 01 B; OpenX6X00), sent by itself on a change too
 }
 
 def find_dev(name='IC-705'):		# the radio's CI-V port, None if not plugged in
@@ -85,7 +85,8 @@ class Rig:
 		s.last_set = 0.0		# NG only reported right after a user command; polls may NG quietly
 		s.mhz, s.band, s.win = 0.0, False, None		# band view: fixed scope edges that follow the dial
 		s.tx = 0		# as last reported by 1C 00
-		s.vfo, s.split = '', 0		# vfo: what was last set from here ('' = never; the radio can't be asked); split: as last reported by 0F
+		s.vfo, s.split = '', 0		# vfo: what was last set from here, or read with 07 (v07); '' = never; split: as last reported by 0F
+		s.v07 = False		# the radio answers 07 with its VFO (RIGS v07)
 		s.att_on = 0x20		# 11 xx for attenuator on: 705 20 (dB), X6200 01 (RIGS att)
 		s.m26 = False		# read the mode with 26 00 (selected VFO) instead of 04 (RIGS m26)
 		s.po = None		# (raw, watts) table for the Po meter (RIGS po); None: no power reading
@@ -104,6 +105,8 @@ class Rig:
 		s.send(*((0x26, 0x00) if s.m26 else (0x04,)))
 		s.send(0x1C, 0x00)
 		s.send(0x0F)
+		if s.v07:
+			s.send(0x07)
 		if b in DATA_OK:
 			s.send(0x1A, 0x06)
 		if b and b not in NOWIDTH:
@@ -182,6 +185,12 @@ class Rig:
 			if d[0] != s.split:
 				s.split = d[0]
 				s.emit('split', d[0])
+		elif cmd == 0x07 and len(d) == 1 and d[0] in (0, 1) and s.v07:		# the VFO, asked or after the radio's A/B key
+			v = 'AB'[d[0]]
+			if v != s.vfo:
+				s.vfo = v
+				s.emit('vfo', v)
+				s.read_fast('')		# the other VFO's mode isn't known yet
 		elif cmd == 0x11 and len(d) == 1:
 			s.emit('att', int(d[0] != 0))
 		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x02:
@@ -291,7 +300,7 @@ class Rig:
 			n = round(abs(float(v)) * 2) * 50		# 0.5 dB steps, hundredths
 			s.send(0x27, 0x19, 0x00, *bytes.fromhex(f'{n:04d}'), 0x01 if float(v) < 0 else 0x00)
 			s.send(0x27, 0x19, 0x00)
-		elif k == 'vfo':		# no read command for the selected VFO, so the engine remembers what it set
+		elif k == 'vfo':		# remembered as set (the 705 can't be asked; v07 radios say so themselves too)
 			s.vfo = 'A' if v == 'A' else 'B'
 			s.send(0x07, 0x00 if v == 'A' else 0x01)
 			s.emit('vfo', s.vfo)
