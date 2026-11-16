@@ -6,7 +6,7 @@ from pathlib import Path
 
 import serial
 from PyQt6.QtCore import pyqtSignal, QEvent, QPointF, QProcess, QProcessEnvironment, QRect, QSize, Qt, QTimer, QUrl
-from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
+from PyQt6.QtNetwork import QAbstractSocket, QNetworkAccessManager, QNetworkReply, QNetworkRequest, QTcpSocket
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QSplitter, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
@@ -55,7 +55,7 @@ HELP = '''
 </table>
 
 <h3>Decoder</h3>
-<p>Pick RTTY, CW, PSK31, Olivia, VARA, ARDOP, Packet, JS8, FT4, FT8 or WSPR. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, ARDOP by ardopcf, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). To keep auto tune off a loud neighbor, right-click the strip beside it: Ignore above (or below) that frequency; the ignored part is dimmed, auto tune stays out of it (a click still tunes there), Search the whole strip undoes it. Remembered for each of RTTY, CW, PSK31 and Olivia. The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dBFS figure before the status is the loudest the radio's audio got in the last second (0 = full scale): orange within 3 dB of the top, red when it clips; with AGC off, keep it out of the red with RF gain. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY), for CW the speed, for PSK31 the quality (how clean the phase is: near 1 = a good signal, about 0.64 = noise; it decodes above 0.8). PSK31: live keyboard chat around 14.070, 7.070, 3.580 (USB); the strip shows each signal as a narrow hump about 60 Hz wide: click one to read it (it fine-tunes itself), or leave Auto tune on for the strongest. Olivia: the broad, steady, warbling signals (often 250 to 1000 Hz wide, around 14.072-14.076 and 7.070-7.075 USB) that sound like a choir of beeps; slow (1.5 to 2.5 characters a second) but it reads through noise and fading far below where PSK31 gives up. Pick the mode that matches the signal's width on the strip, right-click > Olivia: 8/250 and 16/500 are the common ones, 32/1000 the widest (the first number is tones, the second the width in Hz); the shaded part of the strip is the width it decodes and should sit over the signal. A wrong mode decodes nothing. It finds the signal (auto: the strongest stretch that wide, not a narrow carrier) and the timing itself, and searches about 125 Hz either side of the shading for the exact frequency, so a click near the middle of the signal is enough. It takes a few blocks to lock (8/250: about 8 s) and then prints those too; text comes a block at a time. The status line says the mode, the frequency, S/N (the code's own measure: above 4 it decodes, noise reads about 3) and searching or decoding. Contestia (same menu) is the faster sibling, upper case only. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Double-click a callsign (or right-click it > Look up) to see its QRZ page. Lookups go to one ungoogled Chromium window of shack's own (its own profile, shack-qrz under ~/.var/app/io.github.ungoogled_software.ungoogled_chromium/config: log in to QRZ there once), reused for every lookup and opened again if you close it. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, ardop.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Right-click > VARA for more: Full payloads shows each frame's whole data instead of its first 100 characters; Unconfirmed frames too adds frames whose calls it detected but couldn't confirm (more lines, some of them wrong). ARDOP (Winlink's other HF mode, often heard near the VARA frequencies; tune it to 1500 Hz audio like VARA): by ardopcf in its receive-only mode, which decodes every frame it hears, whoever's session it is. Like JS8, shack plays the audio into a sound device of its own (shack-ARDOP) and ardopcf listens to it (through ALSA's pulse device: if ardopcf stops at once, apt install libasound2-plugins). Each frame is a line: UTC, [session ID] (FF = not in a session: calls, pings, ID frames), frame type (its name says the modulation and bandwidth: 4PSK.500.100.E), Q (decode quality, out of 100; on DataACK / DataNAK the other side's), then the callers (ConReq: who > whom, Ping), the station's call and grid on ID frames (with distance and bearing from your grid), or the data as text under it (Winlink mail itself is compressed: shown as binary). The shaded part of the strip follows the bandwidth of the last frame. An idle link trades DataACK and IDLE frames every few seconds: hidden unless you untick right-click > ARDOP > Hide. It needs ardopcf (github.com/pflarue/ardop: make) on the PATH or in ~/installed/builds/ardop. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. Right-click > Packet > Transmit (a transceiver, with the PTT port on) lets direwolf transmit too, as N7RTS (Modem.CALL): shack puts the radio in the data version of its sideband (LSB-D or USB-D: only there does the radio send the USB audio), split off, and starts direwolf again with an output to the radio's sound card, PTT through the PTT port and its AGW port 8000 open for connected mode. The TX level line appears: Audio level is the card's PCM level for packet, separate from VARA's (direwolf plays much louder), remembered per radio. Send a test packet (same menu) sends one frame to BEACON, about 3 s at 300 baud: the PTT line's meters show its peaks afterwards; set Audio level so the watts reach what the radio is set to while ALC barely moves. Its own frames show in the text but not in Heard. Transmit ends when the decoder stops (another decoder, Off, Modem, the radio closed) and starts off again every time. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... WSPR (by wsprd, also WSJT-X's): beacons, every even minute, 2-minute transmissions within 200 Hz of 1500 Hz audio; each line is a station heard: time, SNR, DT, offset, drift (Hz/min), callsign, grid and the power it says it sends (dBm and watts). FT4, FT8 and WSPR lines with a grid end with its distance (miles) and bearing from your grid: right-click > My grid (EM85RP to start). A good way to see where a band is open. Dials (USB): 3.5686, 7.0386, 10.1387, 14.0956, 18.1046, 21.0946, 28.1246 MHz. Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, PSK31, Olivia, VARA, ARDOP, Packet, JS8, FT4, FT8 or WSPR. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, ARDOP by ardopcf, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). To keep auto tune off a loud neighbor, right-click the strip beside it: Ignore above (or below) that frequency; the ignored part is dimmed, auto tune stays out of it (a click still tunes there), Search the whole strip undoes it. Remembered for each of RTTY, CW, PSK31 and Olivia. The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dBFS figure before the status is the loudest the radio's audio got in the last second (0 = full scale): orange within 3 dB of the top, red when it clips; with AGC off, keep it out of the red with RF gain. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY), for CW the speed, for PSK31 the quality (how clean the phase is: near 1 = a good signal, about 0.64 = noise; it decodes above 0.8). PSK31: live keyboard chat around 14.070, 7.070, 3.580 (USB); the strip shows each signal as a narrow hump about 60 Hz wide: click one to read it (it fine-tunes itself), or leave Auto tune on for the strongest. Olivia: the broad, steady, warbling signals (often 250 to 1000 Hz wide, around 14.072-14.076 and 7.070-7.075 USB) that sound like a choir of beeps; slow (1.5 to 2.5 characters a second) but it reads through noise and fading far below where PSK31 gives up. Pick the mode that matches the signal's width on the strip, right-click > Olivia: 8/250 and 16/500 are the common ones, 32/1000 the widest (the first number is tones, the second the width in Hz); the shaded part of the strip is the width it decodes and should sit over the signal. A wrong mode decodes nothing. It finds the signal (auto: the strongest stretch that wide, not a narrow carrier) and the timing itself, and searches about 125 Hz either side of the shading for the exact frequency, so a click near the middle of the signal is enough. It takes a few blocks to lock (8/250: about 8 s) and then prints those too; text comes a block at a time. The status line says the mode, the frequency, S/N (the code's own measure: above 4 it decodes, noise reads about 3) and searching or decoding. Contestia (same menu) is the faster sibling, upper case only. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Double-click a callsign (or right-click it > Look up) to see its QRZ page. Lookups go to one ungoogled Chromium window of shack's own (its own profile, shack-qrz under ~/.var/app/io.github.ungoogled_software.ungoogled_chromium/config: log in to QRZ there once), reused for every lookup and opened again if you close it. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, ardop.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Right-click > VARA for more: Full payloads shows each frame's whole data instead of its first 100 characters; Unconfirmed frames too adds frames whose calls it detected but couldn't confirm (more lines, some of them wrong). ARDOP (Winlink's other HF mode, often heard near the VARA frequencies; tune it to 1500 Hz audio like VARA): by ardopcf in its receive-only mode, which decodes every frame it hears, whoever's session it is. Like JS8, shack plays the audio into a sound device of its own (shack-ARDOP) and ardopcf listens to it (through ALSA's pulse device: if ardopcf stops at once, apt install libasound2-plugins). Each frame is a line: UTC, [session ID] (FF = not in a session: calls, pings, ID frames), frame type (its name says the modulation and bandwidth: 4PSK.500.100.E), Q (decode quality, out of 100; on DataACK / DataNAK the other side's), then the callers (ConReq: who > whom, Ping), the station's call and grid on ID frames (with distance and bearing from your grid), or the data as text under it (Winlink mail itself is compressed: shown as binary). The shaded part of the strip follows the bandwidth of the last frame. An idle link trades DataACK and IDLE frames every few seconds: hidden unless you untick right-click > ARDOP > Hide. It needs ardopcf (github.com/pflarue/ardop: make) on the PATH or in ~/installed/builds/ardop. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. Right-click > Packet > Transmit (a transceiver, with the PTT port on) lets direwolf transmit too, as N7RTS (Modem.CALL): shack puts the radio in the data version of its sideband (LSB-D or USB-D: only there does the radio send the USB audio), split off, and starts direwolf again with an output to the radio's sound card, PTT through the PTT port and its AGW port 8000 open for connected mode. The TX level line appears: Audio level is the card's PCM level for packet, separate from VARA's (direwolf plays much louder), remembered per radio. Send a test packet (same menu) sends one frame to BEACON, about 3 s at 300 baud: the PTT line's meters show its peaks afterwards; set Audio level so the watts reach what the radio is set to while ALC barely moves. Its own frames show in the text but not in Heard. With Transmit on, a Connect line appears under the text: type a call (with its -SSID: K5DDT-1) and Connect, or right-click a station in the Packet tab > Connect to (it tunes there first). direwolf does the AX.25 part (it tries 10 times, 10 s apart, then gives up: DISCONNECTED RETRYOUT); while it tries, the frames it sends and hears show as usual. Once connected, the text box shows only the session: what the station sends, and the lines you type in the box beside Disconnect (Enter sends; the BBS's prompt, then your line, like a terminal); direwolf's frame lines still go to Heard and packet.log, and right-click > Packet > Monitor while connected shows them too. Disconnect ends the session (or gives up while still trying). A station that connects to N7RTS shows up the same way. Settings for slow HF: frames of up to 64 characters, one at a time, 400 ms of lead-in for the radio to key. Transmit ends when the decoder stops (another decoder, Off, Modem, the radio closed) and starts off again every time. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... WSPR (by wsprd, also WSJT-X's): beacons, every even minute, 2-minute transmissions within 200 Hz of 1500 Hz audio; each line is a station heard: time, SNR, DT, offset, drift (Hz/min), callsign, grid and the power it says it sends (dBm and watts). FT4, FT8 and WSPR lines with a grid end with its distance (miles) and bearing from your grid: right-click > My grid (EM85RP to start). A good way to see where a band is open. Dials (USB): 3.5686, 7.0386, 10.1387, 14.0956, 18.1046, 21.0946, 28.1246 MHz. Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -1085,6 +1085,95 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 
 ==================================================================================================================================================='''
 
+class Link:		# a connected-mode packet session through direwolf's AGW port (direwolf does AX.25 itself): our call registered, connect, text both ways, disconnect
+	HDR = struct.Struct('<B3xBxBx10s10sII')		# AGW header: port, kind, PID, call from, call to, data length, user
+
+	'''-------------------------------------------------------------------
+		said(text): what the other station sent; event(text, peer): direwolf's news, peer = who we're now connected to, None = not connected
+		peer: who we're connected or connecting to; up: connected
+	-------------------------------------------------------------------'''
+
+	def __init__(self, port, call, said, event):
+		self.port, self.call, self.said, self.event = port, call, said, event
+		self.peer, self.up, self.buf, self.tries = None, False, b'', 0
+		self.s = QTcpSocket()
+		self.s.connected.connect(lambda: self.send('X', pid=0))		# register our call: incoming connects come to us too
+		self.s.readyRead.connect(self.read)
+		self.s.errorOccurred.connect(self.err)
+		self.s.connectToHost('127.0.0.1', port)
+		return
+	# __init__
+
+	def err(self, e):		# direwolf takes a moment to open its port: try for 10 s
+		if self.s.state() == QAbstractSocket.SocketState.ConnectedState or self.tries < 0:
+			return
+		self.tries += 1
+		if self.tries > 20:
+			return self.event(f"can't reach direwolf's AGW port {self.port}: {self.s.errorString()}", None)
+		QTimer.singleShot(500, lambda: self.tries >= 0 and self.s.state() == QAbstractSocket.SocketState.UnconnectedState and self.s.connectToHost('127.0.0.1', self.port))
+		return
+	# err
+
+	def send(self, kind, to='', data=b'', pid=0xF0):		# False: direwolf's port isn't open (yet)
+		if self.s.state() != QAbstractSocket.SocketState.ConnectedState:
+			self.event(f"direwolf isn't ready yet (its AGW port {self.port}): try again in a moment", self.peer if self.up else None)
+			return False
+		self.s.write(self.HDR.pack(0, ord(kind), pid, self.call.encode(), to.encode(), len(data), 0) + data)
+		return True
+	# send
+
+	def connect(self, to):
+		if not self.send('C', to):
+			return False
+		self.peer = to
+		return True
+
+	def write(self, text):		# a line we typed; the BBS wants CR
+		self.send('D', self.peer, text.encode('utf-8', 'replace') + b'\r')
+		return
+
+	def bye(self):		# connected: DISC; still connecting: gives up
+		self.send('d', self.peer)
+		return
+
+	'''-------------------------------------------------------------------
+		direwolf's replies: X registered (data 1 = ok), C connected (either way), D their text, d disconnected (by them, us or retries)
+	-------------------------------------------------------------------'''
+
+	def read(self):
+		self.buf += bytes(self.s.readAll())
+		while len(self.buf) >= self.HDR.size:
+			port, kind, pid, frm, to, n, user = self.HDR.unpack_from(self.buf)
+			if len(self.buf) < self.HDR.size + n:
+				break
+			data, self.buf = self.buf[self.HDR.size:self.HDR.size + n], self.buf[self.HDR.size + n:]
+			kind, frm = chr(kind), frm.split(b'\0')[0].decode(errors='replace')
+			text = data.decode('utf-8', 'replace').replace('\0', '').replace('\r\n', '\n').replace('\r', '\n')		# direwolf's own notices end in a NUL
+			if kind == 'X' and data[:1] != b'\x01':
+				self.event(f'direwolf refused to register {self.call}', None)
+			elif kind == 'C':
+				self.peer, self.up = frm, True
+				self.event(text, frm)
+			elif kind == 'D':
+				self.said(text)
+			elif kind == 'd':
+				self.peer, self.up = None, False
+				self.event(text, None)
+		return
+	# read
+
+	def close(self):
+		self.tries = -1		# no more reconnecting
+		self.s.abort()
+		return
+
+# class Link
+
+
+'''===================================================================================================================================================
+
+==================================================================================================================================================='''
+
 class Ardop(Helper):		# ARDOP by ardopcf in receive-only mode (RXO: every frame it hears, any session): pacat plays the audio into shack-ARDOP, ardopcf records its monitor (it only takes a sound card). Same face as Helper
 	PROG = ('ardopcf', '~/installed/builds/ardop/ardopcf')		# name on the PATH, where else to look
 	PORT = 8525		# its host port (+1 data), not the usual 8515: a Pat with its own ardopcf keeps that one
@@ -1573,6 +1662,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.onheard, self.pkh = None, None		# onheard(call, decoder, level, fec, via, text, svc): a station was heard (shack sets it); pkh: direwolf's 'audio level' line, waiting for its packet line
 		self.ptx = None		# packet transmit: (card, PTT port) while it's on, None = receive only
 		self.ontx, self.txoff = None, None		# ontx(on): right-click > Packet > Transmit; txoff(): transmit ended with the decoder (shack sets both)
+		self.link = None		# the AGW Link while packet can transmit
+		self.mon = False		# right-click > Packet > Monitor while connected: direwolf's frame lines show during a session too
 		self.load()
 		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, PSK31, Olivia, VARA, ARDOP (ardopcf), packet, JS8 (through JS8Call), FT4, FT8 (jt9) or WSPR (wsprd). Right-click for settings')
 		self.pick.addItems(self.KINDS)
@@ -1610,6 +1701,20 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.recb.clicked.connect(self.set_rec)
 		self.iqb = QPushButton('Record I/Q', checkable=True, toolTip=f'RSPdx: record its I/Q stream to {self.IQ} and the audio to {self.WAV}; click again to stop and name them')
 		self.iqb.clicked.connect(lambda on: self.set_rec(on, True))
+		self.callbox = QLineEdit(maxLength=9, placeholderText='call', toolTip='The station to connect to (with its -SSID if it has one): a BBS, node or anyone. Enter or Connect')
+		self.callbox.setFixedWidth(self.callbox.fontMetrics().horizontalAdvance('W' * 11))
+		self.callbox.returnPressed.connect(self.con_click)
+		self.conb = QPushButton('Connect', toolTip='Connect to that station through direwolf (it retries on its own); Disconnect ends the session, or gives up while still trying')
+		self.conb.clicked.connect(self.con_click)
+		self.line = QLineEdit(enabled=False, placeholderText='type here, Enter sends', toolTip='A line to the connected station (sent with a CR at the end)')
+		self.line.returnPressed.connect(self.type_send)
+		self.conrow = QWidget(visible=False)		# packet's Connect line: there while packet can transmit
+		h = QHBoxLayout(self.conrow)
+		h.setContentsMargins(0, 0, 0, 0)
+		h.addWidget(QLabel('Connect to'))
+		h.addWidget(self.callbox)
+		h.addWidget(self.conb)
+		h.addWidget(self.line, 1)
 		self.spec = Spectrum(self)
 		for w in (self.row, self.spec, self.text):
 			w.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -1767,7 +1872,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			elif self.kind == 'JS8':
 				h = Helper('JS8', ['--playback', '--raw', '--format=s16le', '--rate=48000', '--channels=1', f'--device={self.SINK}', '--latency-msec=200'], (500, 2500), self.add, self.died)		# JS8 signals sit in 500-2500 Hz
 			else:
-				h = Helper('Packet', ['-c', self.dwconf(), '-t', '0'], self.PACKET[self.pk], self.add, self.died)
+				h = Helper('Packet', ['-c', self.dwconf(), '-t', '0'], self.PACKET[self.pk], self.pkadd, self.died)
 				h.drop = self.NAGS if self.hide else ()
 				h.seen = self.pkseen
 				h.gain = 0.5		# Digital out arrives at direwolf's 'audio level' 70-100; it wants about 50 (above that it warns of distortion)
@@ -1798,6 +1903,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.timer.stop()
 		if self.ptx:
 			self.ptx = None
+			self.unlink()
 			self.txoff and self.txoff()
 		if not keep:
 			self.js8quit()
@@ -2150,12 +2256,85 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	-------------------------------------------------------------------'''
 
 	def transmit(self, tx):
+		self.unlink()
 		self.ptx = tx
 		if self.kind == 'Packet' and isinstance(self.dec, Helper):
 			self.dec.close()
 			self.make()
+		if tx and isinstance(self.dec, Helper):
+			self.link = Link(self.AGW, Modem.CALL, self.said, self.linked)
+			self.conrow.setVisible(True)
 		return
 	# transmit
+
+	def unlink(self):		# the session goes with direwolf: a connected station times out on its own
+		if self.link:
+			if self.link.peer:
+				self.link.bye()		# DISC, if direwolf gets to send it
+				self.add(f"\n*** {'session with' if self.link.up else 'connect to'} {self.link.peer} dropped: transmit off\n")
+			self.link.close()
+			self.link = None
+		self.conrow.setVisible(False)
+		self.connected(None)
+		return
+	# unlink
+
+	'''-------------------------------------------------------------------
+		Connect line: Connect / Disconnect, a typed line; direwolf's news and the other station's text into the text box
+	-------------------------------------------------------------------'''
+
+	def con_click(self):
+		if not self.link:
+			return
+		if self.link.peer:
+			return self.link.bye()
+		call = self.callbox.text().strip().upper()
+		if not re.fullmatch(r'[A-Z0-9]{3,6}(-\d{1,2})?', call) or not re.search(r'\d', call):
+			return self.status.setText(f'not a callsign: {call!r}')
+		self.callbox.setText(call)
+		if self.link.connect(call):
+			self.connected(call, False)
+		return
+	# con_click
+
+	def type_send(self):
+		t = self.line.text()
+		if self.link and self.link.up:
+			self.link.write(t)
+			self.add(t + '\n')		# echoed after the BBS's prompt, like a terminal
+			self.line.clear()
+		return
+
+	def said(self, text):
+		self.add(text)
+		return
+
+	def linked(self, text, peer):
+		self.add(('' if self.text.document().lastBlock().text() == '' else '\n') + text.rstrip('\n') + '\n')
+		self.connected(peer, bool(peer))
+		return
+
+	def connected(self, peer, up=False):		# the Connect line's state: nobody, trying (peer, not up), connected
+		self.conb.setText('Connect' if not peer else 'Disconnect')
+		self.callbox.setEnabled(not peer)
+		self.line.setEnabled(up)
+		if up:
+			self.line.setFocus()
+		return
+	# connected
+
+	'''-------------------------------------------------------------------
+		direwolf's lines: while connected only its 'Stream' lines (link trouble, disconnects) show, unless Monitor is ticked; packet.log gets them all
+	-------------------------------------------------------------------'''
+
+	def pkadd(self, txt):
+		if self.link and self.link.up and not self.mon and not txt.startswith('Stream '):
+			if self.logging:
+				self.write_log(txt)
+			return
+		self.add(txt)
+		return
+	# pkadd
 
 	'''-------------------------------------------------------------------
 		one UI frame to BEACON through direwolf's AGW port ('M': unproto, no path), long enough to set the audio level by the meters
@@ -2386,6 +2565,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		a = k.addAction('Send a test packet')
 		a.setEnabled(bool(self.ptx))
 		a.triggered.connect(self.test_packet)
+		self.check(k, 'Monitor while connected (all frames heard, not just the session)', self.mon, lambda on: setattr(self, 'mon', on))
 		a = m.addAction(f'My grid ({self.grid or "none"})…')		# FT4, FT8, WSPR: distance and bearing from here
 		a.triggered.connect(self.my_grid)
 		a = m.addAction('Clear')
@@ -3262,6 +3442,7 @@ class Shack(QMainWindow):
 		row += 1
 		g.addWidget(self.dec.text, row, 0, 1, 3)
 		g.setRowStretch(row, 1)		# spare height goes to the decoded text (or below the rows when it's hidden)
+		g.addWidget(self.dec.conrow, row + 1, 0, 1, 3)		# packet's Connect line, under the text while packet can transmit
 		box = QWidget()
 		box.setLayout(g)
 		self.tabs.addTab(self.bms, 'Bookmarks')
@@ -4511,11 +4692,12 @@ class Shack(QMainWindow):
 
 	def heard(self, call, dec, level=None, fec='', via='', text='', svc=()):
 		if self.rig:
-			self.bm.heard(call, self.freq.hz, self.mode.currentText(), dec, level, fec, via, text, svc)
+			mode = self.mode.currentText().removesuffix('-D')		# LSB-D (packet transmit on) is the same dial as LSB: one row
+			self.bm.heard(call, self.freq.hz, mode, dec, level, fec, via, text, svc)
 			now = time.monotonic()
 			if now - self.hdat > 0.2:		# a new packet (a digipeated one calls this twice in a row: digipeater, sender)
 				self.hdnew = set()
-			self.hdnew.add((call, self.freq.hz, self.mode.currentText(), dec))
+			self.hdnew.add((call, self.freq.hz, mode, dec))
 			self.hdat = now
 			g = re.search(r'\b[A-R]{2}[0-9]{2}[A-Xa-x]{2}\b', text)		# a beacon that says where it is (6 characters: 4 would catch too much that isn't a grid)
 			if g:
@@ -4631,12 +4813,20 @@ class Shack(QMainWindow):
 	def hd_menu(self, pos):
 		r = self.hds.rowAt(pos.y())
 		menu = QMenu(self)
+		link = self.dec.link
+		con = menu.addAction(f"Connect to {self.hdlist[r]['call']}") if r >= 0 else None
+		if con:
+			con.setEnabled(bool(link) and not link.peer and self.hdlist[r]['dec'] == 'Packet')
+			con.setToolTip('Packet > Transmit on and no session: tunes there and connects' if not link else 'already in a session' if link.peer else '')
+			menu.addSeparator()
 		qrz = menu.addAction(f"Look up {self.hdlist[r]['call'].split('-')[0]} on QRZ") if r >= 0 else None
 		one = menu.addAction(f"Forget {self.hdlist[r]['call']}") if r >= 0 else None
 		every = menu.addAction('Clear the whole list')
 		act = menu.exec(self.hds.viewport().mapToGlobal(pos))
 		if act is None:
 			return
+		if act == con:
+			return self.hd_connect(self.hdlist[r])
 		if act == qrz:
 			return self.dec.qrz(self.hdlist[r]['call'].split('-')[0])
 		if act == one:
@@ -4646,6 +4836,22 @@ class Shack(QMainWindow):
 		self.show_hds()
 		return
 	# hd_menu
+
+	'''-------------------------------------------------------------------
+		Heard > Connect to: its frequency, in the data version of its sideband (transmit stays on rear USB audio), then connect once the radio's there
+	-------------------------------------------------------------------'''
+
+	def hd_connect(self, h):
+		if not self.rig or not self.can(h):
+			return self.statusBar().showMessage(f"The {self.radio.currentText()} can't tune {h['hz'] / 1e6:.6f} {h['mode']}", 5000)
+		want = h['mode'] if h['mode'].endswith('-D') else h['mode'] + '-D'
+		if self.rig.mode != want:
+			self.rig.set('mode', want)
+		self.rig.set('mhz', h['hz'] / 1e6)
+		self.dec.callbox.setText(h['call'])
+		QTimer.singleShot(800, lambda: self.dec.link and not self.dec.link.peer and self.rig and self.rig.mode == want and self.dec.con_click())
+		return
+	# hd_connect
 
 	'''-------------------------------------------------------------------
 		Save: bookmark the open radio's frequency, mode and settings
