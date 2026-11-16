@@ -3275,7 +3275,7 @@ class Shack(QMainWindow):
 		self.rig.po = r.get('po')
 		self.rig.m26 = r.get('m26', False)
 		self.rig.v07 = r.get('v07', False)
-		self.has_swr = r['swr']		# the X6200 always reads 0
+		self.has_swr = r['swr']
 		self.agcs = r['agc']
 		quiet(self.agc, self.agc.clear)
 		quiet(self.agc, self.agc.addItems, list(self.agcs))
