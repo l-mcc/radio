@@ -3714,7 +3714,7 @@ class Shack(QMainWindow):
 		then pk_go starts direwolf with transmit. Off: direwolf receive only again
 	-------------------------------------------------------------------'''
 
-	PKPCM = 15		# packet's first Audio level: this many steps below xara's (direwolf plays near full scale, xara at -15 dB)
+	PKPCM = 15		# packet's first Audio level where vara= has no pkpcm: this many steps below xara's (direwolf plays near full scale, xara at -15 dB)
 
 	def pk_tx(self, on):
 		self.pkgen += 1
@@ -3763,7 +3763,7 @@ class Shack(QMainWindow):
 		elif self.rig.mode != want:
 			why = f"the radio didn't go to {want} (it says {self.rig.mode}): packet transmit not started"
 		else:
-			why = self.pcm_set('pkpcm', max(v['pcm'] - self.PKPCM, 0))
+			why = self.pcm_set('pkpcm', v.get('pkpcm', max(v['pcm'] - self.PKPCM, 0)))
 		if why:
 			return self.statusBar().showMessage(why, 10000)
 		self.dec.transmit((self.card, self.srv.server_address[1]))
