@@ -6,7 +6,7 @@ from pathlib import Path
 
 import serial
 from PyQt6.QtCore import pyqtSignal, QEvent, QPointF, QProcess, QProcessEnvironment, QRect, QSize, Qt, QTimer, QUrl
-from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest
+from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QSplitter, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
@@ -64,7 +64,7 @@ HELP = '''
 <p>Stations the Packet decoder has heard, kept in bookmarks.db: one row for each callsign at each dial frequency. The tab shows every frequency on every band and fills in as packets arrive (click MHz to group them by frequency). Hits counts its packets; Last is when the latest came (today: the time, otherwise the date too); FEC says FX.25 or IL2P (blank: plain AX.25); Svc is what the station has said it offers, gathered from its packets: bbs (a mailbox: 'Mail for' beacons, a BBS greeting), node, em (Winlink / email), chat, aprs, digi (it relayed someone else's packet); blank = nothing seen yet; Miles is how far it is from your grid (decoder right-click > My grid): from the grid in its beacon if it sends one, otherwise US callsigns are looked up once at callook.info (the FCC's address for the licence; other countries stay blank); Clicked counts your double-clicks on it; Via is the digipeater when you didn't hear the station itself (the digipeater gets its own row: it's the one you heard); Text is its last beacon. The station the latest packet came from is green (with its digipeater, if it came through one), until the next packet. Rest the mouse on a row for when it was first heard, direwolf's audio level and the whole text. Click a column heading to sort by it, again for the other way; remembered. Double-click the callsign: its QRZ page (the same window the decoders use). Double-click anywhere else on the row: go to that frequency and mode with the decoder that heard it. Right-click: look up on QRZ, forget one station, or clear the whole list.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. CI-V can't read which one the radio is on, so opening the IC-705 or Xiegu puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. To send mail: right-click > Compose a message (To, Cc, Subject, text; Put in the outbox), then double-click a gateway (or right-click it > Connect): shack sets Modem to Transmit if it isn't, Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. When Pat is done (or you stop it) shack sets Modem back to Off. The menu says how many messages are waiting in the outbox. Right-click > Stop Pat gives up on a connect. Right-click a gateway > Add as a Pat alias puts it in Pat's config (connect_aliases, named like ko4hjo-7100.5) for pat connect and Pat's own Connect list; it shows with a ★ here, and the same menu item removes it. Right-click > Mail opens Pat's mailbox here (no browser): Inbox, Outbox, Sent, Archive; unread messages are bold and are marked read when you open them; Reply (to the sender), Reply all, Save attachments, Archive, Delete, Compose. After a connect the bottom line says how many are unread. BUSY in the bottom left corner of the window (there while the modem runs) is red while xara (the modem) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (1-8 W over CI-V; set below 1 W on the radio it shows ?); drag the slider (it's sent when you let go), or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on. The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. CI-V can't read which one the radio is on, so opening the IC-705 or Xiegu puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. To send mail: right-click > Compose a message (To, Cc, Subject, text; Put in the outbox), then double-click a gateway (or right-click it > Connect): shack sets Modem to Transmit if it isn't, Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. When Pat is done (or you stop it) shack sets Modem back to Off. The menu says how many messages are waiting in the outbox. Right-click > Stop Pat gives up on a connect. Right-click a gateway > Add as a Pat alias puts it in Pat's config (connect_aliases, named like ko4hjo-7100.5) for pat connect and Pat's own Connect list; it shows with a ★ here, and the same menu item removes it. Right-click > Mail opens Pat's mailbox here (no browser): Inbox, Outbox, Sent, Archive; unread messages are bold and are marked read when you open them; Reply (to the sender), Reply all, Save attachments, Archive, Delete, Compose. After a connect the bottom line says how many are unread. BUSY in the bottom left corner of the window (there while the modem runs) is red while xara (the modem) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR; the last reading stays. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed. Screensaver (Xiegu with the OpenX6X00 firmware): On turns the radio's screensaver on or off, the box is how many minutes without use before it comes. It goes over WiFi to the radio's web page (x6200.local, the RIGS web entry in civ.py), not over the USB cable, so it's greyed until the radio answers there; it's read when the radio is opened.</p>
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
@@ -2950,6 +2950,17 @@ class Shack(QMainWindow):
 		self.lamp = QComboBox(toolTip='The radio\'s display backlight')
 		self.lamp.addItems(d75.LAMPS)
 		self.lamp.activated.connect(lambda i: self.rig and self.rig.set('lamp', i))
+		self.scr = QWidget(toolTip='The Xiegu\'s screensaver (OpenX6X00 firmware): on or off, and the minutes without use before it comes. Set over WiFi through the radio\'s web page, not CI-V')		# X6200
+		h = QHBoxLayout(self.scr)
+		h.setContentsMargins(0, 0, 0, 0)
+		self.saver = QPushButton('On', checkable=True)
+		self.saver.clicked.connect(lambda on: self.web_set('screen_saver', int(on)))
+		self.savermin = QSpinBox(minimum=1, maximum=120, prefix='after ', suffix=' min', keyboardTracking=False)
+		self.savermin.valueChanged.connect(lambda v: self.web_set('screen_saver_min', v))
+		h.addWidget(self.saver)
+		h.addWidget(self.savermin)
+		h.addStretch()
+		self.web = None		# the open radio's web configurator host (civ RIGS web), None: it has none
 		self.rfg = QSpinBox(minimum=0, maximum=100, singleStep=5, suffix=' %', keyboardTracking=False, toolTip='The radio\'s RF gain; 100 % = full gain')
 		self.rfg.valueChanged.connect(lambda v: self.rig and self.rig.set('rfg', round(v * 2.55)))
 		self.vfo = {}		# A, B: which one the radio listens on (CI-V can't ask the radio: shack selects the one it last used when the radio is opened)
@@ -3155,7 +3166,7 @@ class Shack(QMainWindow):
 		self.labels = {}		# control: its row label
 		g = QGridLayout()
 		g.setColumnStretch(2, 1)		# empty column 2 takes the spare width: adjusters stay narrow in column 1, meters span 1-2
-		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('Squelch', self.sq), ('Backlight', self.lamp), ('Preamp', self.sw['pre']), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof), ('Display', self.disp),
+		for row, (name, w) in enumerate([('Radio', self.radio), ('Frequency', self.freq), ('VFO', self.vforow), ('Mode', self.mode), ('Filter', self.filrow), ('Volume', self.vol), ('Squelch', self.sq), ('Backlight', self.lamp), ('Screensaver', self.scr), ('Preamp', self.sw['pre']), ('RF gain', self.rfg), ('AGC', self.agc), ('Preamp', self.pa), ('ATT', self.ra), ('Roofing', self.roof), ('Display', self.disp),
 				('IF reduction', self.ifr), ('LNA reduction', self.lna), ('Antenna', self.ant), ('Bandwidth', self.bw), ('Overload', self.ovl), ('ADC', self.adc), ('Signal', self.smeter), ('SWR', self.swr), ('Power', self.power), ('PTT', self.pttrow), ('TX level', self.txrow)]):
 			self.labels[w] = QLabel(name)
 			w.installEventFilter(self)		# the label greys out with its control (eventFilter)
@@ -3212,7 +3223,7 @@ class Shack(QMainWindow):
 		self.split.splitterMoved.connect(lambda *_: self.splitsave.start())
 		self.setCentralWidget(self.split)
 
-		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.sq, self.lamp, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.smeter, self.swr, self.power, self.pttrow, self.modemrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
+		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.sq, self.lamp, self.scr, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.smeter, self.swr, self.power, self.pttrow, self.modemrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
 		self.n = 0
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
@@ -3272,7 +3283,7 @@ class Shack(QMainWindow):
 		self.rig.read_fast()
 		self.rig.set('vfo', self.bm.pref(f'vfo {name}', 'A'))		# CI-V can't tell which VFO the radio is on: put it on the one shack last left it on, so the right button lights
 		self.smeter.setRange(-54, 60)
-		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.modemrow, *([self.scoperow] if r['scope'] else []), self.save, self.tabs,
+		self.show_radio(name, r['modes'], r['top'], (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.rfg, self.agc, self.sw['pre'], self.sw['att'], self.sw['nb'], self.sw['nr'], *self.lvl.values(), self.smeter, *([self.swr] if r['swr'] else []), self.power, self.pttrow, self.modemrow, *([self.scoperow] if r['scope'] else []), *([self.scr] if r.get('web') else []), self.save, self.tabs,
 			self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.dec.recb))		# nb, nr: the radio's own, on/off
 		self.card = card_of(dev) or r['audio']		# the card in this radio; by name if sysfs doesn't say
 		self.dec.opened(self.card)		# decoders read the radio's USB sound card
@@ -3280,8 +3291,54 @@ class Shack(QMainWindow):
 		self.tx_band(0)		# no PTT until the radio says where it is
 		self.show_bms()
 		self.on_rig('ptt_clients', 0)
+		self.web = r.get('web')
+		if self.web:
+			self.web_get()
 		return
 	# open_civ
+
+	'''-------------------------------------------------------------------
+		the Xiegu's screensaver over WiFi: OpenX6X00's web configurator, GET / POST /api/display (JSON, no login), the same calls as its Display page
+		greyed until the radio answers; read when the radio is opened (a change on the radio itself shows the next time)
+	-------------------------------------------------------------------'''
+
+	def web_get(self):
+		self.scr.setEnabled(False)
+		req = QNetworkRequest(QUrl(f'http://{self.web}/api/display'))
+		req.setTransferTimeout(5000)
+		r = self.net.get(req)
+		r.finished.connect(lambda: self.web_got(r))
+		return
+
+	def web_got(self, r):
+		try:
+			d = json.loads(bytes(r.readAll()))
+			quiet(self.saver, self.saver.setChecked, bool(d['screen_saver']))
+			quiet(self.savermin, self.savermin.setValue, d['screen_saver_min'])
+			self.scr.setEnabled(bool(self.web))		# closed meanwhile: stays grey
+			self.savermin.setEnabled(self.saver.isChecked())
+		except (ValueError, KeyError, TypeError):
+			self.statusBar().showMessage(f"Screensaver: no answer from {self.web} ({r.errorString()}). Is the radio on WiFi?", 10000)
+		r.deleteLater()
+		return
+
+	def web_set(self, name, val):
+		self.savermin.setEnabled(self.saver.isChecked())
+		req = QNetworkRequest(QUrl(f'http://{self.web}/api/display'))
+		req.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, 'application/json')
+		req.setTransferTimeout(5000)
+		r = self.net.post(req, json.dumps({'name': name, 'val': val}).encode())
+		r.finished.connect(lambda: self.web_set_done(r))
+		return
+
+	def web_set_done(self, r):
+		if r.error() != QNetworkReply.NetworkError.NoError:
+			self.statusBar().showMessage(f"Screensaver: the radio didn't take it ({bytes(r.readAll()).decode(errors='replace') or r.errorString()})", 10000)
+			if self.web:
+				self.web_get()		# back to what the radio has
+		r.deleteLater()
+		return
+	# web_set_done
 
 	'''-------------------------------------------------------------------
 		open a Yaesu CAT radio: the FTdx10 (no filter presets, SWR or scope over CAT yet)
@@ -3432,6 +3489,7 @@ class Shack(QMainWindow):
 	-------------------------------------------------------------------'''
 
 	def shut(self):
+		self.web = None
 		self.ptt_limit.stop()
 		self.modem_off()
 		self.dec.closed()
