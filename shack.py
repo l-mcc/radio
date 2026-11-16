@@ -3275,7 +3275,7 @@ class Shack(QMainWindow):
 		self.rig.po = r.get('po')
 		self.rig.m26 = r.get('m26', False)
 		self.rig.v07 = r.get('v07', False)
-		self.has_swr = r['swr']		# the X6200 always reads 0
+		self.has_swr = r['swr']
 		self.agcs = r['agc']
 		quiet(self.agc, self.agc.clear)
 		quiet(self.agc, self.agc.addItems, list(self.agcs))
@@ -4245,6 +4245,8 @@ class Shack(QMainWindow):
 		elif k == 'split':
 			self.splitb.setVisible(bool(v))
 		elif k in ('watts', 'alc'):
+			if k == 'watts' and not v and 'watts' in self.met:		# the Xiegu reads 0 once it's back on receive, and a poll or two lands there before its 1C 00 says so: keep the transmission's value
+				return
 			self.met[k] = v
 			self.show_meters()
 		elif k == 'ptt_clients':
