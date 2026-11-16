@@ -3677,6 +3677,7 @@ class Shack(QMainWindow):
 		self.met[k] = v
 		self.peak[k] = max(self.peak.get(k, v), v)
 		self.show_meters()
+		log.debug(f'meter {k} {v:.2f}' + ('' if self.txon else ' (after unkey)'))
 		return
 
 	def amixer(self, *a):		# on the open radio's card: (why it failed or None, its output)
@@ -4374,6 +4375,7 @@ class Shack(QMainWindow):
 				self.meter('swr', r)
 		elif k == 'ptt':
 			if bool(v) != self.txon:		# keyed: new peaks; unkeyed: show them
+				log.info(f'radio says {"TX " + str(v) if v else "RX"}' + ('' if v else f'; peaks {self.peak}'))
 				self.txon = bool(v)
 				if v:
 					self.met, self.peak = {}, {}
