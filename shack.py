@@ -55,7 +55,7 @@ HELP = '''
 </table>
 
 <h3>Decoder</h3>
-<p>Pick RTTY, CW, PSK31, Olivia, VARA, ARDOP, Packet, JS8, FT4, FT8 or WSPR. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, ARDOP by ardopcf, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). To keep auto tune off a loud neighbor, right-click the strip beside it: Ignore above (or below) that frequency; the ignored part is dimmed, auto tune stays out of it (a click still tunes there), Search the whole strip undoes it. Remembered for each of RTTY, CW, PSK31 and Olivia. The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dBFS figure before the status is the loudest the radio's audio got in the last second (0 = full scale): orange within 3 dB of the top, red when it clips; with AGC off, keep it out of the red with RF gain. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY), for CW the speed, for PSK31 the quality (how clean the phase is: near 1 = a good signal, about 0.64 = noise; it decodes above 0.8). PSK31: live keyboard chat around 14.070, 7.070, 3.580 (USB); the strip shows each signal as a narrow hump about 60 Hz wide: click one to read it (it fine-tunes itself), or leave Auto tune on for the strongest. Olivia: the broad, steady, warbling signals (often 250 to 1000 Hz wide, around 14.072-14.076 and 7.070-7.075 USB) that sound like a choir of beeps; slow (1.5 to 2.5 characters a second) but it reads through noise and fading far below where PSK31 gives up. Pick the mode that matches the signal's width on the strip, right-click > Olivia: 8/250 and 16/500 are the common ones, 32/1000 the widest (the first number is tones, the second the width in Hz); the shaded part of the strip is the width it decodes and should sit over the signal. A wrong mode decodes nothing. It finds the signal (auto: the strongest stretch that wide, not a narrow carrier) and the timing itself, and searches about 125 Hz either side of the shading for the exact frequency, so a click near the middle of the signal is enough. It takes a few blocks to lock (8/250: about 8 s) and then prints those too; text comes a block at a time. The status line says the mode, the frequency, S/N (the code's own measure: above 4 it decodes, noise reads about 3) and searching or decoding. Contestia (same menu) is the faster sibling, upper case only. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Double-click a callsign (or right-click it > Look up) to see its QRZ page. Lookups go to one ungoogled Chromium window of shack's own (its own profile, shack-qrz under ~/.var/app/io.github.ungoogled_software.ungoogled_chromium/config: log in to QRZ there once), reused for every lookup and opened again if you close it. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, ardop.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Right-click > VARA for more: Full payloads shows each frame's whole data instead of its first 100 characters; Unconfirmed frames too adds frames whose calls it detected but couldn't confirm (more lines, some of them wrong). ARDOP (Winlink's other HF mode, often heard near the VARA frequencies; tune it to 1500 Hz audio like VARA): by ardopcf in its receive-only mode, which decodes every frame it hears, whoever's session it is. Like JS8, shack plays the audio into a sound device of its own (shack-ARDOP) and ardopcf listens to it (through ALSA's pulse device: if ardopcf stops at once, apt install libasound2-plugins). Each frame is a line: UTC, [session ID] (FF = not in a session: calls, pings, ID frames), frame type (its name says the modulation and bandwidth: 4PSK.500.100.E), Q (decode quality, out of 100; on DataACK / DataNAK the other side's), then the callers (ConReq: who > whom, Ping), the station's call and grid on ID frames (with distance and bearing from your grid), or the data as text under it (Winlink mail itself is compressed: shown as binary). The shaded part of the strip follows the bandwidth of the last frame. An idle link trades DataACK and IDLE frames every few seconds: hidden unless you untick right-click > ARDOP > Hide. It needs ardopcf (github.com/pflarue/ardop: make) on the PATH or in ~/installed/builds/ardop. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... WSPR (by wsprd, also WSJT-X's): beacons, every even minute, 2-minute transmissions within 200 Hz of 1500 Hz audio; each line is a station heard: time, SNR, DT, offset, drift (Hz/min), callsign, grid and the power it says it sends (dBm and watts). FT4, FT8 and WSPR lines with a grid end with its distance (miles) and bearing from your grid: right-click > My grid (EM85RP to start). A good way to see where a band is open. Dials (USB): 3.5686, 7.0386, 10.1387, 14.0956, 18.1046, 21.0946, 28.1246 MHz. Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
+<p>Pick RTTY, CW, PSK31, Olivia, VARA, ARDOP, Packet, JS8, FT4, FT8 or WSPR. With the RSPdx it turns Digital out on and decodes that; with the IC-705 or Xiegu it decodes the radio's USB sound card (the radio's receive audio, read with arecord; use a -D mode or USB with a filter wide enough for the signal). It decodes it (decode.py's decoders; VARA by xara-monitor, ARDOP by ardopcf, packet by direwolf, JS8 by JS8Call), text scrolling below. Use SSB with the Digital bandwidth. It tunes itself to the strongest signal in the passband and follows it; a new station starts a new line. The strip under the row is the audio spectrum the decoder sees (300-2900 Hz): click a signal to lock onto it (RTTY: either tone), the wheel nudges 10 Hz, right-click for Auto tune (back to following the strongest). To keep auto tune off a loud neighbor, right-click the strip beside it: Ignore above (or below) that frequency; the ignored part is dimmed, auto tune stays out of it (a click still tunes there), Search the whole strip undoes it. Remembered for each of RTTY, CW, PSK31 and Olivia. The dashed line is the squelch; the marker on the signal (two for RTTY) is green while decoding. The status line says auto or locked. The dBFS figure before the status is the loudest the radio's audio got in the last second (0 = full scale): orange within 3 dB of the top, red when it clips; with AGC off, keep it out of the red with RF gain. The dB box is the squelch: decoding starts when the signal is that far above the noise and stops 3 dB lower. The line next to it shows the tone frequency, signal to noise, open/closed, and for RTTY the alternation (near -1 = real RTTY), for CW the speed, for PSK31 the quality (how clean the phase is: near 1 = a good signal, about 0.64 = noise; it decodes above 0.8). PSK31: live keyboard chat around 14.070, 7.070, 3.580 (USB); the strip shows each signal as a narrow hump about 60 Hz wide: click one to read it (it fine-tunes itself), or leave Auto tune on for the strongest. Olivia: the broad, steady, warbling signals (often 250 to 1000 Hz wide, around 14.072-14.076 and 7.070-7.075 USB) that sound like a choir of beeps; slow (1.5 to 2.5 characters a second) but it reads through noise and fading far below where PSK31 gives up. Pick the mode that matches the signal's width on the strip, right-click > Olivia: 8/250 and 16/500 are the common ones, 32/1000 the widest (the first number is tones, the second the width in Hz); the shaded part of the strip is the width it decodes and should sit over the signal. A wrong mode decodes nothing. It finds the signal (auto: the strongest stretch that wide, not a narrow carrier) and the timing itself, and searches about 125 Hz either side of the shading for the exact frequency, so a click near the middle of the signal is enough. It takes a few blocks to lock (8/250: about 8 s) and then prints those too; text comes a block at a time. The status line says the mode, the frequency, S/N (the code's own measure: above 4 it decodes, noise reads about 3) and searching or decoding. Contestia (same menu) is the faster sibling, upper case only. Right-click the row, the strip or the text for Auto tune, RTTY settings (presets, baud, shift, mark low) and Clear. Scroll up to read back; it stops following until you scroll to the bottom again. Double-click a callsign (or right-click it > Look up) to see its QRZ page. Lookups go to one ungoogled Chromium window of shack's own (its own profile, shack-qrz under ~/.var/app/io.github.ungoogled_software.ungoogled_chromium/config: log in to QRZ there once), reused for every lookup and opened again if you close it. VARA: USB, Digital bandwidth, signal centered (VARA sits at 1500 Hz audio; the shaded part of the strip is its bandwidth, right-click > VARA to change it: 500, 2300 or 2750 Hz). Every packet xara-monitor hears is a line: calls, frame types, SN, KISS text. Log (on the Decoder line, remembered) appends everything the text box shows to a file next to shack.py named for the decoder: vara.log, ardop.log, rtty.log, cw.log, packet.log, js8.log, with a dated header each time logging starts or the decoder changes. A station it can't name shows as #hash (a code made from the callsign); calls.txt next to shack.py lists the callsigns it should name, read each time VARA starts. shack adds every callsign xara-monitor decodes (CQ, header and link lines, and 'de CALL' in VarAC text); add your own and your regulars by hand, one per line. It needs xara-monitor on the PATH or in ~/installed/builds/xara/target/release. Right-click > VARA for more: Full payloads shows each frame's whole data instead of its first 100 characters; Unconfirmed frames too adds frames whose calls it detected but couldn't confirm (more lines, some of them wrong). ARDOP (Winlink's other HF mode, often heard near the VARA frequencies; tune it to 1500 Hz audio like VARA): by ardopcf in its receive-only mode, which decodes every frame it hears, whoever's session it is. Like JS8, shack plays the audio into a sound device of its own (shack-ARDOP) and ardopcf listens to it (through ALSA's pulse device: if ardopcf stops at once, apt install libasound2-plugins). Each frame is a line: UTC, [session ID] (FF = not in a session: calls, pings, ID frames), frame type (its name says the modulation and bandwidth: 4PSK.500.100.E), Q (decode quality, out of 100; on DataACK / DataNAK the other side's), then the callers (ConReq: who > whom, Ping), the station's call and grid on ID frames (with distance and bearing from your grid), or the data as text under it (Winlink mail itself is compressed: shown as binary). The shaded part of the strip follows the bandwidth of the last frame. An idle link trades DataACK and IDLE frames every few seconds: hidden unless you untick right-click > ARDOP > Hide. It needs ardopcf (github.com/pflarue/ardop: make) on the PATH or in ~/installed/builds/ardop. Packet: AX.25, FX.25 and IL2P, by direwolf (on the PATH or in ~/installed/builds/direwolf/build/src); right-click > Packet: 300 baud (HF: tones 1600/1800 Hz, either sideband, tune so they sit in the shaded part) or 1200 baud (VHF FM, needs an FM radio). Each packet is a line: who to whom, via, text; APRS ones get a second line decoding it. direwolf complains about packets that aren't APRS (BBS and node IDs: 'Unknown APRS Data Type', 'Use of ID is obsolete'); those lines are hidden unless you untick right-click > Packet > Hide complaints. Right-click > Packet > Transmit (a transceiver, with the PTT port on) lets direwolf transmit too, as N7RTS (Modem.CALL): shack puts the radio in the data version of its sideband (LSB-D or USB-D: only there does the radio send the USB audio), split off, and starts direwolf again with an output to the radio's sound card, PTT through the PTT port and its AGW port 8000 open for connected mode. The TX level line appears: Audio level is the card's PCM level for packet, separate from VARA's (direwolf plays much louder), remembered per radio. Send a test packet (same menu) sends one short frame to BEACON: watch the PTT line's meters and set Audio level so ALC barely moves. Its own frames show in the text but not in Heard. Transmit ends when the decoder stops (another decoder, Off, Modem, the radio closed) and starts off again every time. JS8: through JS8Call (started if it isn't running; if shack started it, Off, another decoder, closing the radio or shack close it again; one you started yourself is left running): shack plays Digital out into a sound device of its own, shack-JS8, and shows what JS8Call decodes (UTC, SNR, offset, text), a message's frames joined on one line as in JS8Call's Band Activity. Once, in JS8Call: Settings > Audio, Input = Monitor of shack-JS8; Settings > Reporting, Enable UDP Server API, 127.0.0.1 port 2242. The status line says when JS8Call is connected (it pings every 15 s). JS8 needs the clock right to a second or so. FT4 and FT8: by jt9, WSJT-X's decoder (apt install wsjtx; WSJT-X itself isn't run): at the end of each period on the UTC clock (FT4 7.5 s, FT8 15 s) shack gives it that period's audio and shows what it decodes, the period's time, SNR, DT (how far the signal is off the clock: a few tenths is normal, all of them off by the same amount = your clock), offset and message, like WSJT-X's Band Activity. The whole passband is decoded; use USB or USB-D with a wide filter (Digital bandwidth on the RSPdx). FT8 at 14.074, 7.074...; FT4 at 14.080, 7.0475... WSPR (by wsprd, also WSJT-X's): beacons, every even minute, 2-minute transmissions within 200 Hz of 1500 Hz audio; each line is a station heard: time, SNR, DT, offset, drift (Hz/min), callsign, grid and the power it says it sends (dBm and watts). FT4, FT8 and WSPR lines with a grid end with its distance (miles) and bearing from your grid: right-click > My grid (EM85RP to start). A good way to see where a band is open. Dials (USB): 3.5686, 7.0386, 10.1387, 14.0956, 18.1046, 21.0946, 28.1246 MHz. Needs the clock right. Settings are shared with decode.py (decode.json). Only one program can listen on UDP 7355: close decode.py, or an xara-monitor fed by nc, first.</p>
 
 <h3>Bookmarks (right)</h3>
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
@@ -1036,11 +1036,13 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 	def out(self):
 		while self.p.canReadLine():
 			line = bytes(self.p.readLine()).decode(errors='replace').rstrip()
-			if self.hush and 'audio level' in line:		# a packet's first line
+			if self.hush and ('audio level' in line or re.match(r'\[\d[LH]\] ', line)):		# a packet's first line, or one we sent
 				self.hush = False
 			if line.startswith(self.drop):
 				continue
-			if self.hush or line.startswith(self.CHATTER) or not line.strip():
+			if self.hush and ('Hamlib' in line or 'rror' in line):		# PTT or AGW port trouble at start: show it
+				self.add(line + '\n')
+			elif self.hush or line.startswith(self.CHATTER) or not line.strip():
 				log.info(f'{self.name}: {line}') if line.strip() else None
 			else:
 				if self.clock:
@@ -1529,6 +1531,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	WSJT = ('FT4', 'FT8', 'WSPR')		# by jt9 and wsprd (WSJT-X's)
 	SINK, JS8PORT = 'shack_js8', 2242		# JS8: null sink JS8Call's input listens to (its monitor); JS8Call's UDP API port
 	PACKET = {300: (1550, 1850), 1200: (1150, 2250)}		# baud: audio band, mark and space tones inside it
+	AGW = 8000		# direwolf's AGW port while packet can transmit: connects go through it
 	NAGS = ('ERROR!!!  Unknown APRS Data Type', 'Use of "ID" in the destination', 'Tell the sender')		# direwolf on packets that aren't APRS (BBS and node IDs)
 	CALLS = HERE / 'calls.txt'		# callsigns xara-monitor shows by name instead of #hash (--calls); shack adds the ones it hears, you can add your own
 	NAMED = re.compile(r'CQFRAME (\S+)|HEADER (\S+) → (\S+):|link (\S+) → (\S+) ended')		# xara-monitor lines that carry callsigns
@@ -1568,6 +1571,8 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.lines = {}		# JS8: offset Hz: (cursor at the start of that message's line, when its last frame came, the line's start); a message's frames join one line
 		self.logging, self.logged = False, None		# Log button; logged: the decoder the file's last header was for
 		self.onheard, self.pkh = None, None		# onheard(call, decoder, level, fec, via, text, svc): a station was heard (shack sets it); pkh: direwolf's 'audio level' line, waiting for its packet line
+		self.ptx = None		# packet transmit: (card, PTT port) while it's on, None = receive only
+		self.ontx, self.txoff = None, None		# ontx(on): right-click > Packet > Transmit; txoff(): transmit ended with the decoder (shack sets both)
 		self.load()
 		self.pick = QComboBox(toolTip='Decode Digital out: RTTY, CW, PSK31, Olivia, VARA, ARDOP (ardopcf), packet, JS8 (through JS8Call), FT4, FT8 (jt9) or WSPR (wsprd). Right-click for settings')
 		self.pick.addItems(self.KINDS)
@@ -1725,7 +1730,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			self.pkh = (m[3] or m[2], int(m[4]), m[5] or '', bool(m[1]))
 			return
 		m = self.FRAME.match(line)
-		if m and self.onheard:
+		if m and self.onheard and m[1].split('-')[0] != Modem.CALL:		# not what we sent
 			src, dst, info = m[1], m[2], m[3]
 			who, level, fec, digi = self.pkh or (src, None, '', False)
 			self.pkh = None
@@ -1791,6 +1796,9 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 
 	def stop(self, keep=False):
 		self.timer.stop()
+		if self.ptx:
+			self.ptx = None
+			self.txoff and self.txoff()
 		if not keep:
 			self.js8quit()
 		if self.rec:
@@ -1991,7 +1999,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			lag = self.dec.lag()
 			t = f'{self.hf} Hz   xara-monitor listening' + (f'   its clock {lag:.0f} s behind (lost audio), times corrected' if lag >= 1 else '')
 		elif self.kind == 'Packet':
-			t = f'{self.pk} baud   direwolf listening'
+			t = f'{self.pk} baud   direwolf ' + (f'TRANSMIT enabled as {Modem.CALL}, AGW port {self.AGW}' if self.ptx else 'listening')
 		elif self.kind in self.WSJT or self.kind == 'ARDOP':
 			t = self.dec.info()
 		elif self.kind == 'Olivia':
@@ -2138,6 +2146,33 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 	# packet
 
 	'''-------------------------------------------------------------------
+		packet transmit on (card, PTT port) or off (None): direwolf again with the new config
+	-------------------------------------------------------------------'''
+
+	def transmit(self, tx):
+		self.ptx = tx
+		if self.kind == 'Packet' and isinstance(self.dec, Helper):
+			self.dec.close()
+			self.make()
+		return
+	# transmit
+
+	'''-------------------------------------------------------------------
+		one UI frame to BEACON through direwolf's AGW port ('M': unproto, no path), to set the audio level by the meters
+		AGW header: port, 3 x 0, kind, 0, PID, 0, call from (10), call to (10), data length, user (0)
+	-------------------------------------------------------------------'''
+
+	def test_packet(self):
+		data = f'{Modem.CALL} test\r'.encode()
+		try:
+			with socket.create_connection(('127.0.0.1', self.AGW), 1) as s:
+				s.sendall(struct.pack('<B3xBxBx10s10sII', 0, ord('M'), 0xF0, Modem.CALL.encode(), b'BEACON', len(data), 0) + data)
+		except OSError as e:
+			self.add(f"can't reach direwolf's AGW port {self.AGW}: {e.strerror or e}\n")
+		return
+	# test_packet
+
+	'''-------------------------------------------------------------------
 		direwolf's "Unknown APRS Data Type" and "Use of ID is obsolete" lines on BBS and node IDs: hidden or shown, from now on
 	-------------------------------------------------------------------'''
 
@@ -2260,11 +2295,18 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 
 	'''-------------------------------------------------------------------
 		direwolf's config, written fresh each start: audio from stdin, nothing out, no network ports or announcing (nothing to clash with)
+		transmit: out to the radio's card, our call, PTT through shack's PTT port (Hamlib's NET rigctl, model 2), the AGW port for connects,
+		slow-HF link settings: 400 ms of flags for CAT keying, 10 s before a retry, short frames one at a time, v2.0 straight away (no SABME tries)
 	-------------------------------------------------------------------'''
 
 	def dwconf(self):
 		path = Path(tempfile.gettempdir()) / 'shack-direwolf.conf'
-		path.write_text(f'ADEVICE stdin null\nARATE 48000\nACHANNELS 1\nCHANNEL 0\nMODEM {self.pk}\nAGWPORT 0\nKISSPORT 0\nDNSSD 0\n')
+		card, port = self.ptx or ('null', None)
+		c = [f'ADEVICE stdin {card}', 'ARATE 48000', 'ACHANNELS 1', 'CHANNEL 0', f'MODEM {self.pk}']
+		if port:
+			c += [f'MYCALL {Modem.CALL}', f'PTT RIG 2 localhost:{port}', 'TXDELAY 40', 'TXTAIL 10', 'FRACK 10', 'RETRY 10', 'PACLEN 64', 'MAXFRAME 1', 'MAXV22 0']
+		c += [f'AGWPORT {self.AGW if port else 0}', 'KISSPORT 0', 'DNSSD 0']
+		path.write_text('\n'.join(c) + '\n')
 		return str(path)
 	# dwconf
 
@@ -2338,6 +2380,12 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 			self.check(k, what, b == self.pk, lambda on, b=b: self.packet(b))
 		k.addSeparator()
 		self.check(k, 'Hide complaints about non-APRS packets', self.hide, self.nags)
+		k.addSeparator()
+		a = self.check(k, f'Transmit (as {Modem.CALL})', bool(self.ptx), lambda on: self.ontx and self.ontx(on))
+		a.setEnabled(self.kind == 'Packet' and isinstance(self.dec, Helper))
+		a = k.addAction('Send a test packet')
+		a.setEnabled(bool(self.ptx))
+		a.triggered.connect(self.test_packet)
 		a = m.addAction(f'My grid ({self.grid or "none"})…')		# FT4, FT8, WSPR: distance and bearing from here
 		a.triggered.connect(self.my_grid)
 		a = m.addAction('Clear')
@@ -2404,7 +2452,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		a.setCheckable(True)
 		a.setChecked(on)
 		a.triggered.connect(f)
-		return
+		return a
 
 	'''-------------------------------------------------------------------
 		settings shared with decode.py's own UI (decode.json)
@@ -3082,6 +3130,9 @@ class Shack(QMainWindow):
 		self.net, self.asked = QNetworkAccessManager(self), set()		# callook.info (where a US callsign is), the callsigns asked about since shack started
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
 		self.dec.onheard = self.heard
+		self.dec.ontx, self.dec.txoff = self.pk_tx, lambda: self.pk_ui(False)
+		self.pkgen = 0		# counts packet Transmit picks: a start still waiting for the radio is dropped when another comes
+		self.pcmkey = 'pcm'		# the Audio level box's setting: 'pcm' for xara, 'pkpcm' for packet (direwolf plays much louder)
 		self.dec.oniq = lambda f: isinstance(self.rig, Rspdx) and self.rig.send(f'iq {f or 0}')
 		self.dec.recname = lambda: f'{self.freq.hz / 1e6:.6f}-{self.mode.currentText()}'
 		self.rsp = (self.dec.row, self.dec.spec, self.dec.text, self.dec.scopeb, self.dec.recb, self.dec.iqb, self.ifr, self.lna, self.ant, self.ovl, self.bw, *(self.sw[k] for k in Rspdx.SWITCHES), self.nbdb, self.nbr, self.save, self.adc, self.tabs)		# RSPdx controls
@@ -3593,11 +3644,7 @@ class Shack(QMainWindow):
 				why = f"the radio didn't go to VFO A, USB-D (it says VFO {self.rig.vfo}, {self.rig.mode}): not started"
 			else:
 				self.drive = v['drive']
-				pcm = self.bm.pref(f'pcm {self.radio.currentText()}', v['pcm'])		# as last left in the Audio level box
-				lim = re.search(r'Limits:.*?(\d+) - (\d+)', self.amixer('sget', 'PCM')[1])		# the card's scale: FTdx10 0-64, IC-705 0-128
-				quiet(self.pcm, self.pcm.setRange, *(map(int, lim.groups()) if lim else (0, 255)))
-				quiet(self.pcm, self.pcm.setValue, pcm)
-				why = self.amixer('sset', 'PCM', str(pcm))[0]		# the radios' cards share one saved mixer state (both are named CODEC): set every time
+				why = self.pcm_set('pcm', v['pcm'])
 			tx = (self.srv.server_address[1], v['drive'])
 		if why:
 			self.modem_off()
@@ -3638,9 +3685,90 @@ class Shack(QMainWindow):
 		why = self.amixer('sset', 'PCM', str(n))[0]
 		if why:
 			return self.statusBar().showMessage(why, 5000)
-		self.bm.set_pref(f'pcm {self.radio.currentText()}', n)
+		self.bm.set_pref(f'{self.pcmkey} {self.radio.currentText()}', n)
 		return
 	# set_pcm
+
+	'''-------------------------------------------------------------------
+		the card's PCM level for xara (key 'pcm') or packet ('pkpcm'), as last left in the Audio level box, else n. return why it failed, or None
+	-------------------------------------------------------------------'''
+
+	def pcm_set(self, key, n):
+		self.pcmkey = key
+		pcm = self.bm.pref(f'{key} {self.radio.currentText()}', n)
+		lim = re.search(r'Limits:.*?(\d+) - (\d+)', self.amixer('sget', 'PCM')[1])		# the card's scale: FTdx10 0-64, IC-705 0-128
+		quiet(self.pcm, self.pcm.setRange, *(map(int, lim.groups()) if lim else (0, 255)))
+		quiet(self.pcm, self.pcm.setValue, pcm)
+		return self.amixer('sset', 'PCM', str(pcm))[0]		# the radios' cards share one saved mixer state (both are named CODEC): set every time
+	# pcm_set
+
+	'''-------------------------------------------------------------------
+		Packet > Transmit: the radio to the data version of its sideband (LSB-D / USB-D, where the rear USB audio is what it sends), split off,
+		then pk_go starts direwolf with transmit. Off: direwolf receive only again
+	-------------------------------------------------------------------'''
+
+	PKPCM = 15		# packet's first Audio level: this many steps below xara's (direwolf plays near full scale, xara at -15 dB)
+
+	def pk_tx(self, on):
+		self.pkgen += 1
+		if not on:
+			self.pk_ui(False)
+			self.dec.transmit(None)
+			return
+		name = self.radio.currentText()
+		v = isinstance(self.rig, (civ.Rig, cat.Rig)) and (civ.RIGS if isinstance(self.rig, civ.Rig) else cat.RIGS)[name].get('vara')
+		mode = self.rig and self.rig.mode or ''
+		want = mode if mode.endswith('-D') else mode + '-D'
+		why = None
+		if not isinstance(self.rig, (civ.Rig, cat.Rig)):
+			why = 'packet transmit needs a transceiver (IC-705, Xiegu, FTdx10)'
+		elif not self.srv:
+			why = 'the PTT port is off (--ptt 0): direwolf would have no way to key the radio'
+		elif not v:
+			why = f'no transmit levels for the {name} yet (vara= in civ.py / cat.py)'
+		elif self.mdm:
+			why = 'the Modem has the sound card: set it to Off first'
+		elif want not in [self.mode.itemText(i) for i in range(self.mode.count())]:
+			why = f"packet transmit needs LSB or USB (it goes to LSB-D / USB-D); the radio is in {mode or 'an unknown mode'}"
+		else:
+			with socket.socket() as sk:
+				sk.settimeout(0.2)
+				if sk.connect_ex(('127.0.0.1', self.dec.AGW)) == 0:
+					why = f'port {self.dec.AGW} is in use: another direwolf running? Stop it first'
+		if why:
+			return self.statusBar().showMessage(why, 10000)
+		if self.rig.split:
+			self.rig.set('split', 0)
+		if mode != want:
+			self.rig.set('mode', want)
+		self.statusBar().showMessage('packet transmit: setting the radio...', 2000)
+		gen = self.pkgen
+		QTimer.singleShot(800, lambda: gen == self.pkgen and self.pk_go(want, v))		# once the radio has reported back
+		return
+	# pk_tx
+
+	def pk_go(self, want, v):
+		if not self.rig or self.dec.kind != 'Packet' or not isinstance(self.dec.dec, Helper):
+			return
+		why = None
+		if self.rig.split:
+			why = 'the radio is still in SPLIT (it would transmit on the other VFO): packet transmit not started'
+		elif self.rig.mode != want:
+			why = f"the radio didn't go to {want} (it says {self.rig.mode}): packet transmit not started"
+		else:
+			why = self.pcm_set('pkpcm', max(v['pcm'] - self.PKPCM, 0))
+		if why:
+			return self.statusBar().showMessage(why, 10000)
+		self.dec.transmit((self.card, self.srv.server_address[1]))
+		self.dec.add(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())} UTC  direwolf TRANSMIT as {Modem.CALL}, {want}, PCM {self.pcm.value()}, {self.card} ---\n")
+		self.pk_ui(True)
+		return
+	# pk_go
+
+	def pk_ui(self, on):		# the TX level line without Tune (that's xara's) while packet can transmit
+		self.show_tx(on)
+		self.tuneb.setVisible(not on)
+		return
 
 	'''-------------------------------------------------------------------
 		Tune: TUNE <drive>dB / TUNE OFF on xara's command port (8300). xara takes one client there, so shack is connected only while tuning
