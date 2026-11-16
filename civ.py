@@ -56,11 +56,11 @@ def cal(v, table):		# a raw meter reading -> its value, straight lines between t
 PO_X6200 = [(int(-w * w + 35 * w), w) for w in (0, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)]		# 15 11 -> watts: OpenX6X00 sends -W² + 35 W (src/cat.cpp)
 PO_705 = [(0, 0), (21, 0.5), (43, 1), (65, 1.5), (83, 2), (95, 2.5), (105, 3), (114, 3.5), (124, 4), (143, 5), (183, 7.5), (213, 10), (255, 12)]		# 15 11 -> watts, Hamlib's IC-705 table
 
-RIGS = {		# port: by-id pattern of the CI-V port; web: host of its web configurator (OpenX6X00 firmware: shack sets the screensaver there); audio: ALSA name of its USB sound card (receive audio for shack's decoders); top: MHz; att: 11 xx value for on; agc: 16 12 values; watts: power at 00 and 255 (None = show %); ng: CTL keys the radio refuses (left out); swr: 15 12 meter works; scope: sends its band scope over CI-V (27 00)
+RIGS = {		# port: by-id pattern of the CI-V port; web: host of its web configurator (OpenX6X00 firmware: shack sets the screensaver there); audio: ALSA name of its USB sound card (receive audio for shack's decoders); top: MHz; att: 11 xx value for on; agc: 16 12 values; watts: power at 00 and 255 (None = show %); ng: CTL keys the radio refuses (left out); sm: (a, b) when 15 02 isn't Icom's 0-241 scale but dBm * a + b (OpenX6X00: S9 = -73 dBm = 41); swr: 15 12 meter works; scope: sends its band scope over CI-V (27 00)
 	'IC-705': dict(port='*IC-705*if00', audio='plughw:CARD=CODEC', baud=115200, modes=MODE_LIST, top=470, att=0x20, agc={'Fast': 1, 'Mid': 2, 'Slow': 3}, watts=None, swr=True, scope=True, po=PO_705,
 		vara=dict(drive=-15, pcm=103, pwr=255)),		# VARA transmit (shack's Modem): xara's drive dB, the card's PCM mixer step (0-128, 1 dB each), RF power 0-255. 100 % power: 9.8 W, ALC 0.08 (105: ALC 0.16; 115: 0.5-0.7; 127: 0.98; 2026-11-10)
 	'Xiegu x6200': dict(port='*1a86_USB_Dual_Serial*if02', audio='plughw:CARD=Device', baud=19200, modes=['LSB', 'USB', 'LSB-D', 'USB-D', 'AM', 'CW', 'CW-R', 'NBFM', 'WBFM'], top=108, m26=True, v07=True, web='x6200.local',		# its if00 is the radio's Linux console, never CI-V
-		att=0x01, agc={}, ng=('agc', 'nbl', 'nrl'), watts=(0, 10), swr=True, scope=False, po=PO_X6200),		# OpenX6X00: 14 0A 0-255 = 0-10 W; 16 12 AGC, 14 12 / 14 06 NB / NR levels answer NG (ng: shack hides and never sends them). m26: firmware 1.0.7 answers 04 with LSB while in broadcast FM; 26 00 tells the truth (06). v07: 07 alone reads the VFO (00 A, 01 B; OpenX6X00), sent by itself on a change too
+		att=0x01, agc={}, ng=('agc', 'nbl', 'nrl'), watts=(0, 10), swr=True, scope=False, po=PO_X6200, sm=(0.75, 96)),		# OpenX6X00: 14 0A 0-255 = 0-10 W; 16 12 AGC, 14 12 / 14 06 NB / NR levels answer NG (ng: shack hides and never sends them). m26: firmware 1.0.7 answers 04 with LSB while in broadcast FM; 26 00 tells the truth (06). v07: 07 alone reads the VFO (00 A, 01 B; OpenX6X00), sent by itself on a change too
 }
 
 def find_dev(name='IC-705'):		# the radio's CI-V port, None if not plugged in
@@ -88,6 +88,7 @@ class Rig:
 		s.tx = 0		# as last reported by 1C 00
 		s.vfo, s.split = '', 0		# vfo: what was last set from here, or read with 07 (v07); '' = never; split: as last reported by 0F
 		s.v07 = False		# the radio answers 07 with its VFO (RIGS v07)
+		s.sm = None		# 15 02 as dBm * a + b (RIGS sm), None: Icom's scale
 		s.att_on = 0x20		# 11 xx for attenuator on: 705 20 (dB), X6200 01 (RIGS att)
 		s.m26 = False		# read the mode with 26 00 (selected VFO) instead of 04 (RIGS m26)
 		s.po = None		# (raw, watts) table for the Po meter (RIGS po); None: no power reading
@@ -195,8 +196,11 @@ class Rig:
 		elif cmd == 0x11 and len(d) == 1:
 			s.emit('att', int(d[0] != 0))
 		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x02:
-			v = int(d[1:].hex())		# 0 = S0, 120 = S9, 241 = S9+60
-			s.emit('smeter', round(v / 120 * 54 - 54 if v <= 120 else (v - 120) / 121 * 60))
+			v = int(d[1:].hex())		# Icom: 0 = S0, 120 = S9, 241 = S9+60
+			if s.sm:		# dB over S9 (-73 dBm)
+				s.emit('smeter', round((v - s.sm[1]) / s.sm[0] + 73))
+			else:
+				s.emit('smeter', round(v / 120 * 54 - 54 if v <= 120 else (v - 120) / 121 * 60))
 		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x12 and d[1:].hex().isdigit():
 			s.emit('swr', (swr(int(d[1:].hex())), int(d[1:].hex())))		# (SWR, raw meter)
 		elif cmd == 0x15 and len(d) == 3 and d[0] == 0x11 and d[1:].hex().isdigit() and s.po:		# Po meter

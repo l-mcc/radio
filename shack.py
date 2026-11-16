@@ -3275,6 +3275,7 @@ class Shack(QMainWindow):
 		self.rig.po = r.get('po')
 		self.rig.m26 = r.get('m26', False)
 		self.rig.v07 = r.get('v07', False)
+		self.rig.sm = r.get('sm')
 		self.has_swr = r['swr']
 		self.agcs = r['agc']
 		quiet(self.agc, self.agc.clear)
