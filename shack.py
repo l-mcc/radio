@@ -972,6 +972,7 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 		self.op, self.last = False, ''		# last: its last stderr line
 		self.hush = kind == 'Packet'		# direwolf talks a lot before its first packet (VOX advice...): shack.log until then
 		self.drop = ()		# line starts not to show at all
+		self.clean = kind == 'PACTOR'		# pmon sends stray non-text bytes around its lines: dropped
 		self.seen = None		# seen(line): every decoded line, before it's shown (VARA: callsigns for calls.txt)
 		self.gain = 1.0		# on the audio it gets
 		self.clock = kind == 'VARA'		# xara-monitor's times = its start + samples/48000: they fall behind when audio is lost (or the card runs slow)
@@ -1036,6 +1037,8 @@ class Helper:		# a decoder program run as a child: Digital out goes to its stdin
 	def out(self):
 		while self.p.canReadLine():
 			line = bytes(self.p.readLine()).decode(errors='replace').rstrip()
+			if self.clean:
+				line = re.sub(r'[\ufffd\x00-\x08\x0b-\x1f\x7f]', '', line)
 			if self.hush and ('audio level' in line or re.match(r'\[\d[LH]\] ', line)):		# a packet's first line, or one we sent
 				self.hush = False
 			if line.startswith(self.drop):
@@ -1618,7 +1621,7 @@ class Text(QPlainTextEdit):		# the decoded text: read-only, a double-click hands
 class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf), packet (direwolf) and JS8 (JS8Call), on Digital out (UDP 7355): a row of controls (self.row), the spectrum (self.spec) and the text they decode (self.text)
 	KINDS = ['Off', 'RTTY', 'CW', 'PSK31', 'Olivia', 'VARA', 'ARDOP', 'PACTOR', 'Packet', 'JS8', 'FT4', 'FT8', 'WSPR']
 	PMON = 'spi'		# PACTOR: the Pi running SCS's pmon (armhf only); shack's audio goes there over ssh into its ALSA loopback, pmon's lines come back
-	PMONCMD = 'stdbuf -oL pmon -a plughw:Loopback,1 & p=$!; aplay -q -D plughw:Loopback,0 -t raw -f S16_LE -r 48000 -c 1; kill $p'		# EOF from shack ends aplay, then pmon
+	PMONCMD = "script -qfc 'pmon -a plughw:Loopback,1,0' /dev/null </dev/null & p=$!; aplay -q -D plughw:Loopback,0,0 -t raw -f S16_LE -r 48000 -c 1; kill $p"		# script: a terminal for pmon, else its lines sit in a 4 KB buffer (stdbuf can't: 64-bit, pmon 32). Subdevice 0 both ends: a stray pmon = busy, not silence. EOF from shack ends aplay, then pmon
 	WSJT = ('FT4', 'FT8', 'WSPR')		# by jt9 and wsprd (WSJT-X's)
 	SINK, JS8PORT = 'shack_js8', 2242		# JS8: null sink JS8Call's input listens to (its monitor); JS8Call's UDP API port
 	PACKET = {300: (1550, 1850), 1200: (1150, 2250)}		# baud: audio band, mark and space tones inside it
@@ -1873,6 +1876,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 				h = Ardop(self.add, self.died, self.aquiet, grid_ll(self.grid))
 			elif self.kind == 'PACTOR':
 				h = Helper('PACTOR', ['-T', '-o', 'BatchMode=yes', self.PMON, self.PMONCMD], (1300, 1700), self.add, self.died)		# PACTOR-1 tones 1400 / 1600 Hz
+				h.drop = ('INFO: could not find a config file',)
 			elif self.kind == 'JS8':
 				h = Helper('JS8', ['--playback', '--raw', '--format=s16le', '--rate=48000', '--channels=1', f'--device={self.SINK}', '--latency-msec=200'], (500, 2500), self.add, self.died)		# JS8 signals sit in 500-2500 Hz
 			else:
