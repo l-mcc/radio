@@ -61,7 +61,7 @@ HELP = '''
 <p>One list for all radios, kept in bookmarks.db next to shack.py. Double-click: tune there, with the settings this radio had when it was saved. Grey ones are out of this radio's range or modes. Yellow ones are at the current frequency (any mode). Click a column heading to sort by it, again for the other way (Name: A-Z, unnamed ones last; Hits: most picked first); remembered. Save asks for a name for a new bookmark (blank is fine; Cancel doesn't save); saving one that's already there just updates its settings. Right-click: rename or delete. Most used are at the top. Each radio starts where it was when you last closed it.</p>
 
 <h3>Packet (right)</h3>
-<p>Stations the Packet decoder has heard, kept in bookmarks.db: one row for each callsign at each dial frequency. The tab shows every frequency on every band and fills in as packets arrive (click MHz to group them by frequency). Hits counts its packets; Last is when the latest came (today: the time, otherwise the date too); FEC says FX.25 or IL2P (blank: plain AX.25); Svc is what the station has said it offers, gathered from its packets: bbs (a mailbox: 'Mail for' beacons, a BBS greeting), node, em (Winlink / email), chat, aprs, digi (it relayed someone else's packet); blank = nothing seen yet; Miles is how far it is from your grid (decoder right-click > My grid): from the grid in its beacon if it sends one, otherwise US callsigns are looked up once at callook.info (the FCC's address for the licence; other countries stay blank); Clicked counts your double-clicks on it; Via is the digipeater when you didn't hear the station itself (the digipeater gets its own row: it's the one you heard); Text is its last beacon. The station the latest packet came from is green (with its digipeater, if it came through one), until the next packet. Rest the mouse on a row for when it was first heard, direwolf's audio level and the whole text. Click a column heading to sort by it, again for the other way; remembered. Double-click the callsign: its QRZ page (the same window the decoders use). Double-click anywhere else on the row: go to that frequency and mode with the decoder that heard it. Right-click: Connect to it (packet Transmit on), look up on QRZ, Highlight it (light gold, every row with that callsign and SSID on every band, remembered: say for the stations you've connected to; the same item takes it off), forget one station, or clear the whole list.</p>
+<p>Stations the Packet decoder has heard, kept in bookmarks.db: one row for each callsign at each dial frequency. The tab shows every frequency on every band and fills in as packets arrive (click MHz to group them by frequency). Hits counts its packets; Last is when the latest came (today: the time, otherwise the date too); FEC says FX.25 or IL2P (blank: plain AX.25); Svc is what the station has said it offers, gathered from its packets: bbs (a mailbox: 'Mail for' beacons, a BBS greeting), node, em (Winlink / email), chat, aprs, digi (it relayed someone else's packet); blank = nothing seen yet; Miles is how far it is from your grid (decoder right-click > My grid): from the grid in its beacon if it sends one, otherwise US callsigns are looked up once at callook.info (the FCC's address for the licence; other countries stay blank); Clicked counts your double-clicks on it; Via is the digipeater when you didn't hear the station itself (the digipeater gets its own row: it's the one you heard); Text is its last beacon. The station the latest packet came from is green (with its digipeater, if it came through one), until the next packet. Rest the mouse on a row for when it was first heard, direwolf's audio level, the signal (the transceiver's S-meter at its highest during the station's latest packet; heard direct only, not through a digipeater; none on the RSPdx) and the whole text. Click a column heading to sort by it, again for the other way; remembered. Double-click the callsign: its QRZ page (the same window the decoders use). Double-click anywhere else on the row: go to that frequency and mode with the decoder that heard it. Right-click: Connect to it (packet Transmit on), look up on QRZ, Highlight it (light gold, every row with that callsign and SSID on every band, remembered: say for the stations you've connected to; the same item takes it off), forget one station, or clear the whole list.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
 <p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (0-10 W, in tenths); drag the slider (it's sent when you let go), or for one step at a time (1 %, 0.1 W on the Xiegu, 1 W on the FTdx10) turn the wheel over it, or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on (not on the Xiegu: its firmware has no NB / NR level or AGC over CI-V, so those are hidden). The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. The IC-705 can't say over CI-V which one it's on, so opening it puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. The Xiegu (OpenX6X00 firmware) says which: the button follows its own A/B key. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. To send mail: right-click > Compose a message (To, Cc, Subject, text; Put in the outbox), then double-click a gateway (or right-click it > Connect): shack sets Modem to Transmit if it isn't, Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. When Pat is done (or you stop it) shack sets Modem back to Off. The menu says how many messages are waiting in the outbox. Right-click > Stop Pat gives up on a connect. Right-click a gateway > Add as a Pat alias puts it in Pat's config (connect_aliases, named like ko4hjo-7100.5) for pat connect and Pat's own Connect list; it shows with a ★ here, and the same menu item removes it. Right-click > Mail opens Pat's mailbox here (no browser): Inbox, Outbox, Sent, Archive; unread messages are bold and are marked read when you open them; Reply (to the sender), Reply all, Save attachments, Archive, Delete, Compose. After a connect the bottom line says how many are unread. BUSY in the bottom left corner of the window (there while the modem runs) is red while xara (the modem) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR, live; after it unkeys, the highest of each during that transmission (marked peak), until the next. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed. Screensaver (Xiegu with the OpenX6X00 firmware): On turns the radio's screensaver on or off, the box is how many minutes without use before it comes. It goes over WiFi to the radio's web page (x6200.local, the RIGS web entry in civ.py), not over the USB cable, so it's greyed until the radio answers there; it's read when the radio is opened.</p>
@@ -392,7 +392,7 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 		self.db.execute("CREATE TABLE IF NOT EXISTS heard (call TEXT NOT NULL, hz INTEGER NOT NULL, mode TEXT NOT NULL, dec TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 1, first TEXT NOT NULL, last TEXT NOT NULL,"
 			" level INTEGER, fec TEXT NOT NULL DEFAULT '', via TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', PRIMARY KEY (call, hz, mode, dec))")		# stations the decoders heard
 		have = {r[1] for r in self.db.execute('PRAGMA table_info(heard)')}
-		for col, kind in (('clicks', 'INTEGER NOT NULL DEFAULT 0'), ('svc', "TEXT NOT NULL DEFAULT ''")):		# added 2026-11-15
+		for col, kind in (('clicks', 'INTEGER NOT NULL DEFAULT 0'), ('svc', "TEXT NOT NULL DEFAULT ''"), ('sig', 'INTEGER')):		# added 2026-11-15; sig 2026-11-18
 			if col not in have:
 				self.db.execute(f'ALTER TABLE heard ADD COLUMN {col} {kind}')
 		self.db.execute("CREATE TABLE IF NOT EXISTS marked (call TEXT PRIMARY KEY)")		# Packet tab rows shown gold (right-click > Highlight, say the stations connected to): the callsign with its SSID, every band
@@ -500,14 +500,14 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 		svc: what it offers ('bbs', 'node'...), added to what the row already says
 	-------------------------------------------------------------------'''
 
-	def heard(self, call, hz, mode, dec, level=None, fec='', via='', text='', svc=()):
+	def heard(self, call, hz, mode, dec, level=None, fec='', via='', text='', svc=(), sig=None):		# sig: the radio's S-meter, dB from S9 (S7 = -12), None = no reading
 		now = time.strftime('%Y-%m-%d %H:%M:%S')
 		key = (call, hz, mode, dec)
 		row = self.db.execute('SELECT svc FROM heard WHERE call = ? AND hz = ? AND mode = ? AND dec = ?', key).fetchone()
 		svc = ', '.join(sorted(set(svc) | set(row[0].split(', ') if row and row[0] else ())))
-		self.db.execute('INSERT INTO heard (call, hz, mode, dec, first, last, level, fec, via, text, svc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+		self.db.execute('INSERT INTO heard (call, hz, mode, dec, first, last, level, fec, via, text, svc, sig) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
 			' ON CONFLICT (call, hz, mode, dec) DO UPDATE SET hits = hits + 1, last = excluded.last, level = excluded.level, fec = excluded.fec, via = excluded.via, svc = excluded.svc,'
-			" text = CASE WHEN excluded.text != '' THEN excluded.text ELSE heard.text END", (*key, now, now, level, fec, via, text, svc))
+			" text = CASE WHEN excluded.text != '' THEN excluded.text ELSE heard.text END, sig = coalesce(excluded.sig, heard.sig)", (*key, now, now, level, fec, via, text, svc, sig))
 		self.db.commit()
 		return
 	# heard
@@ -534,7 +534,7 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 	HEARD = ('call', 'hz', 'hits', 'last', 'fec', 'svc', 'miles', 'clicks', 'via', 'text')
 
 	def heards(self, col=3, down=True, home=None):		# home: (lat, lon), for miles
-		cols = ('call', 'hz', 'mode', 'dec', 'hits', 'first', 'last', 'level', 'fec', 'via', 'text', 'clicks', 'svc')
+		cols = ('call', 'hz', 'mode', 'dec', 'hits', 'first', 'last', 'level', 'fec', 'via', 'text', 'clicks', 'svc', 'sig')
 		out = [dict(zip(cols, row)) for row in self.db.execute(f"SELECT {', '.join(cols)} FROM heard ORDER BY last DESC")]
 		grids = dict(self.db.execute('SELECT call, grid FROM grids'))
 		marked = {r[0] for r in self.db.execute('SELECT call FROM marked')}
@@ -3324,6 +3324,7 @@ class Shack(QMainWindow):
 		self.hds.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 		self.hds.customContextMenuRequested.connect(self.hd_menu)
 		self.hdlist = []		# rows shown
+		self.sigs = []		# (monotonic, S-meter dB from S9) for the last SIGWIN seconds: a packet's row gets the highest
 		self.hdnew, self.hdat = set(), 0		# rows the latest packet touched (sender, and its digipeater), lit until the next packet; when it came (monotonic)
 		self.net, self.asked = QNetworkAccessManager(self), set()		# callook.info (where a US callsign is), the callsigns asked about since shack started
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
@@ -4552,6 +4553,8 @@ class Shack(QMainWindow):
 			self.ovl.setText(f"{'OVERLOAD' if now else 'clear'} ({n})" if now or n else '')
 			self.ovl.setStyleSheet('color: white; background: red; font-weight: bold' if now else '')
 		elif k == 'smeter':
+			now = time.monotonic()
+			self.sigs = [x for x in self.sigs if now - x[0] < self.SIGWIN] + [(now, v)]
 			self.smeter.setValue(max(-54, min(60, v)))
 			self.smeter.setFormat(sunits(v))
 		elif k == 'bars':		# TH-D75: its 0-5 meter
@@ -4713,7 +4716,9 @@ class Shack(QMainWindow):
 	def heard(self, call, dec, level=None, fec='', via='', text='', svc=()):
 		if self.rig:
 			mode = self.mode.currentText().removesuffix('-D')		# LSB-D (packet transmit on) is the same dial as LSB: one row
-			self.bm.heard(call, self.freq.hz, mode, dec, level, fec, via, text, svc)
+			now = time.monotonic()
+			sig = None if via else max((v for t, v in self.sigs if now - t < self.SIGWIN), default=None)		# via a digipeater: the meter read the digipeater, not this station
+			self.bm.heard(call, self.freq.hz, mode, dec, level, fec, via, text, svc, sig)
 			now = time.monotonic()
 			if now - self.hdat > 0.2:		# a new packet (a digipeated one calls this twice in a row: digipeater, sender)
 				self.hdnew = set()
@@ -4767,6 +4772,7 @@ class Shack(QMainWindow):
 		Packet tab: bookmarks.db's heard table, every frequency; the selected station stays selected when the table is filled again
 	-------------------------------------------------------------------'''
 
+	SIGWIN = 3		# s: a 300 baud packet lasts 2-3 s and direwolf reports it at its end, so the S-meter's highest in the last 3 s is its signal
 	HDLIT = '#8fd48f'		# the latest packet's row(s): green (selection is yellow)
 	HDMARK = '#f0dc9b'		# a highlighted station (right-click > Highlight): light gold
 
@@ -4781,7 +4787,7 @@ class Shack(QMainWindow):
 			if h['grid'] is None:
 				self.locate(h['call'].split('-')[0])
 			last = h['last'][11:16] if h['last'].startswith(today) else h['last'][5:16]		# today: HH:MM, before: MM-DD HH:MM
-			tip = f"{h['call']}   {h['hz'] / 1e6:.6f} {h['mode']}   {h['dec']}\nfirst heard {h['first']}\nlast heard {h['last']}\naudio level {h['level']}" + (f"\ngrid {h['grid']}" if h['grid'] else '') + (f"\n{h['text']}" if h['text'] else '')
+			tip = f"{h['call']}   {h['hz'] / 1e6:.6f} {h['mode']}   {h['dec']}\nfirst heard {h['first']}\nlast heard {h['last']}\naudio level {h['level']}" + (f"\nsignal {sunits(h['sig'])}" if h['sig'] is not None else '') + (f"\ngrid {h['grid']}" if h['grid'] else '') + (f"\n{h['text']}" if h['text'] else '')
 			miles, clicks = '' if h['miles'] is None else str(h['miles']), str(h['clicks'] or '')
 			for c, x in enumerate((h['call'], f"{h['hz'] / 1e6:.6f}", str(h['hits']), last, h['fec'], h['svc'], miles, clicks, h['via'], h['text'])):
 				it = QTableWidgetItem(x)
