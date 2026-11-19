@@ -1239,7 +1239,7 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 	def __init__(self, rf=None):
 		self.packets = 0
 		self.rf = rf		# rf(): the transceiver's S-meter for this packet (dB from S9, None = no meter)
-		self.sigline, self.sigt = '', 0		# the signal line from the latest 'audio level', shown above its packet; when (monotonic): stale after a second (its packet was skipped)
+		self.sigline, self.sigt = '', 0		# the signal info from the latest 'audio level', shown on its packet's first line; when (monotonic): stale after a second (its packet was skipped)
 		self.indent = ' ' * len(self.head(0, '', '', ''))		# where the text column starts: every line under a packet starts there
 		self.text = ''		# the last packet's first line of text
 		self.after = False		# the last line was a packet: what direwolf prints next about it (APRS decode, errors) goes in the text column
@@ -1256,7 +1256,7 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 		ms = '(' + m['ms'] + ')'
 		fec = m['fec'] or 'AX.25'
 		digi = 'digi ' + (m['prob'] or m['who']) if m['digi'] else ''
-		return f'      rf {rf:7s} audio {m["level"]:>3s} {ms:9s} {fec:5s}  {m["bars"]:10s} {digi}'.rstrip() + '\n'
+		return f'rf {rf:7s} audio {m["level"]:>3s} {ms:9s} {fec:5s}  {m["bars"]:10s} {digi}'.rstrip()
 
 	def head(self, n, src, dst, via):		# the fixed columns before the text
 		if len(via) > self.W_VIA:
@@ -1308,10 +1308,13 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 					if p:
 						lines += self.wrap(p)
 				self.text = next((p.strip() for p in parts if p.strip()), '')		# the first line before wrapping, for spotting direwolf's echo of it
-				payload = ('\n' + self.indent).join(lines)
 				sigline = self.sigline if time.monotonic() - self.sigt < 1 else ''		# direwolf prints the frame right after its level line; our own sent frames have none
 				self.sigline = ''
-				return sigline + head + payload + '\n'
+				first = (head + sigline).rstrip()		# number, from, to, via, then the signal info in the text column
+				body = ''
+				for p in lines:		# the text from the second line on, in the text column
+					body += self.indent + p + '\n'
+				return '\n' + first + '\n' + body		# a blank line before each packet
 			except Exception as e:
 				raise
 		else:
