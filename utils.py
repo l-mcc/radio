@@ -8,6 +8,8 @@ import re
 import subprocess
 import logging
 from pathlib import Path
+import shlex
+import shutil
 
 '''------------------------------------------------------------------------
 	make exception string
@@ -245,4 +247,12 @@ def run(cmd, shl=False):
 		s = f'utils.run: {str(e)}'
 	return rc, s.strip()
 # run
+
+'''-------------------------------------------------------------------'''
+
+def is_callsign(callsign):
+	pat = r"^[A-Z0-9]{1,2}[0-9][A-Z]{1,3}(-[0-9]{1,2})?$"
+	return bool(re.match(pat, callsign))
+# is_callsign
+
 

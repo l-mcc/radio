@@ -10,8 +10,12 @@ from PyQt6.QtNetwork import QAbstractSocket, QNetworkAccessManager, QNetworkRepl
 from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPalette, QPen, QPolygonF, QShortcut, QTextCursor
 from PyQt6.QtWidgets import (QApplication, QComboBox, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox,
 	QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QSlider, QSpinBox, QSplitter, QStatusBar, QTableWidget, QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
+from prodict import Prodict
 
+import utils
 import cat, civ, d75, styles
+
+
 try:		# decoders need numpy; without it shack still runs, the Decoder row says why
 	import numpy as np
 	import decode
@@ -1199,27 +1203,214 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 		""",
 		re.VERBOSE
 	)
-	SKIP = ('Station address,', 'Digi2 Address "" is empty.', 'Audio input level')
+	# cnt = 0
+	lines = []
+	state = 0
+	packets = 0
+	fxs = 0
+	axs = 0
 
+	# nodes = ['PNDBBQ', 'PNDBBS', 'BPQ Packet Switch', 'BBS', 'PLWS', 'JTBBS', 'PVHBBS']
+	# cs = Prodict.from_dict({})
+	ncs = []				# non callsigns
+	# cmds = []
+	# apps = ['ARDOP', 'BPQ Node', 'LinBPQ', 'VARA5', 'LinBPQ Network Node', 'BBS', 'NODE', 'CHAT', 'RMS']
+	last_lookup_time = time.time()
+
+	STARTSWITHS =	(
+							'Station address,',
+		     				'Digi2 Address "" is empty.',
+							'Audio input level',
+	     			 	)
+	SKIPS =	[
+					'audio level',
+					'UNKNOWN vendor',
+					'is obsolete',
+					
+				]
 	def __init__(self):
 		self.packets = 0
 		return
 
-	'''-------------------------------------------------------------------
-		a direwolf line -> what the text box shows: '' = nothing; a packet's 'audio level' line is dropped (the Packet tab still gets it), lines that aren't frames go through as they are
-	-------------------------------------------------------------------'''
+	'''----------------------------------------------------------------------------------------------------
+		a direwolf line -> what the text box shows: '' = nothing; a packet's 'audio level' line is dropped
+		(the Packet tab still gets it), lines that aren't frames go through as they are
+	-------------------------------------------------------------------------------------------------------'''
 
-	def __call__(self, line):
-		s = line.strip()
-		if 'audio level' in s or s.startswith(self.SKIP):
-			return ''
-		m = self.pat.match(s)
-		if not m:
-			return line
-		self.packets += 1
-		src, dst = m['sender'], m['destination']
-		payload = ('\n' + ' ' * 34).join(p.strip() for p in re.split(r'<0x0[ad]>', m['payload']) if p.strip())		# 34: under the first line's payload
-		return f'{self.packets:4d}  {src:9s} ->  {dst:12s}   {payload}\n'
+	def __call__(self, line) -> str:
+
+		if True:
+			try:
+				s = line.strip()
+				if s == '':
+					return line
+
+				if any(x in s for x in self.SKIPS):
+					return ''
+				if s.startswith(self.STARTSWITHS):
+					return ''
+
+				m = self.pat.match(s)
+				if not m:
+					return line
+
+
+				self.packets += 1
+				src, dst = m['sender'], m['destination']
+				payload = ('\n' + ' ' * 36).join(p.strip() for p in re.split(r'<0x0[ad]>', m['payload']) if p.strip())		# 34: under the first line's payload
+				return f'{self.packets:4d}  {src:9s} -> {dst:14s}   {payload}\n'
+			except Exception as e:
+				raise
+		else:
+			try:
+				line = line.strip()
+
+				if line == '':
+					if Direwolf.state == 1:
+						Direwolf.packets += 1			# for easier debugging
+						if Direwolf.packets == 42:
+							bp += 1
+						cnt = 0
+						for line in Direwolf.lines:
+							cnt += 1
+							if cnt == 1:
+								if 'FX.25' in line:
+									Direwolf.fxs += 1
+								else:
+									Direwolf.axs += 1
+								continue
+							if line.startswith('Station address,'):
+								continue
+							elif line.startswith('Digi2 Address "" is empty.'):
+								continue
+							elif line.startswith('Audio input level'):
+								continue
+							match = re.match(Direwolf.pat, line)
+							if not match:
+								raise ValueError(f"Malformed line: {line}")
+
+							src = match.group("sender")
+							a = src.split('-')
+							cs = a[0]
+							if utils.is_callsign(cs):
+								now = time.time()
+								dt = now - Direwolf.last_lookup_time
+								# info = utils.lookup(cs, db, dt)
+								Direwolf.last_lookup_time = time.time()
+								# if not cs in Direwolf.cs:
+								# 	Direwolf.cs[cs] = info
+							else:
+								if not src in Direwolf.ncs:
+									# Direwolf.ncs.append(src)
+									Direwolf.ncs = '1'
+
+							if Direwolf.packets == 1593:
+								pass
+
+							dst = match.group("destination")
+							if dst == 'MBX':
+								pass
+							a = dst.split('-')
+							cs = a[0]
+							if utils.is_callsign(cs):
+								now = time.time()
+								dt = now - Direwolf.last_lookup_time
+								# info = utils.lookup(cs, db, dt)
+								Direwolf.last_lookup_time = time.time()
+								if not cs in Direwolf.cs:
+									# Direwolf.cs[cs] = info
+									pass
+							else:
+								if not dst in Direwolf.ncs:
+									Direwolf.ncs.append(dst)
+
+							payload = match.group("payload")
+
+							if dst == "ID" or "<0x0d>" in payload or "ARDOP" in payload or "VARA" in payload:
+								style = 'data'
+								color = consts.KMAG
+								# print()
+							else:
+								style = 'aprs'
+								color = consts.KCYN
+							pl = None
+							if Direwolf.packets == 2:
+								pass
+							payload = payload.strip('<0x0d>')
+							payload = payload.strip()
+
+							if not 'ARDOP' in Direwolf.apps:
+								Direwolf.apps.append('ARDOP')
+
+							if '<0x0d>' in payload:
+								a = payload.split('<0x0d>')
+								pl = ''
+								for s in a:
+									if s == '':
+										continue
+									pl += '\n' + ' '*35 + s.strip()
+								payload = pl.strip()
+
+								bp += 1
+							s = f'{Direwolf.packets:4d}  {src:9s} ->  {dst:14s}  {payload}'
+							# if pl:
+							# 	s += pl
+							# print(f'{color}{s}{consts.COLOR_RESET}')
+							# print(s)
+							if style == 'data':
+								# print()
+								pass
+
+							# print(line[6:])
+						# hamutils.parse_raw_direwolf(lines, db, packets)
+						Direwolf.lines.clear()
+						Direwolf.state = 0
+					return s
+				# if line == ''
+
+
+				if '<0x' in line:
+					pass
+
+				if ('|' in line or 'FX.25' in line) and Direwolf.state == 0:
+					# assert Direwolf.state==0
+					Direwolf.lines.append(line)
+					Direwolf.state = 1
+				elif Direwolf.state == 1:
+					Direwolf.lines.append(line)
+					pass
+				else:
+					if 'some scrutiny' in line:
+						Direwolf.state = 0
+						return ''
+					elif line.startswith('QRT'):
+						Direwolf.state = 0
+						return ''
+					elif 'is empty!' in line:
+						Direwolf.state = 0
+						return ''
+					elif 'Attached to AGW client' in line:
+						Direwolf.state = 0
+						return ''
+					else:
+						pass
+
+
+
+				# print(f'{consts.KMAG}{line}{consts.COLOR_RESET}')
+				# parse the line and reformat:
+				# hamutils.parse_raw_direwolf(line)
+			except Exception as e:
+				s = repr(e)
+				exc_type, exc_obj, exc_tb = sys.exc_info()
+				fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+				s = '%s, %s, %s' % (exc_type, fname, exc_tb.tb_lineno)
+				raise Exception(s)
+			finally:
+				pass
+		# if False
+
+
 	# __call__
 
 # class Direwolf
@@ -5036,7 +5227,6 @@ if __name__ == '__main__':
 	import logging
 	import subprocess
 
-	import utils
 
 	try:
 		app = 'shack'
