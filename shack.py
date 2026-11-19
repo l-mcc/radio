@@ -1228,9 +1228,18 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 					'is obsolete',
 					
 				]
+	W_DST, W_VIA = 9, 12		# column widths: destination, the digipeater path after it (cut with ~ when longer)
+
 	def __init__(self):
 		self.packets = 0
+		self.indent = ' ' * len(self.head(0, '', '', ''))		# where the text column starts: every line under a packet starts there
+		self.after = False		# the last line was a packet: what direwolf prints next about it (APRS decode, errors) goes in the text column
 		return
+
+	def head(self, n, src, dst, via):		# the fixed columns before the text
+		if len(via) > self.W_VIA:
+			via = via[:self.W_VIA - 1] + '~'
+		return f'{n:4d}  {src:9s} -> {dst:{self.W_DST}s} {via:{self.W_VIA}s}  '
 
 	'''----------------------------------------------------------------------------------------------------
 		a direwolf line -> what the text box shows: '' = nothing; a packet's 'audio level' line is dropped
@@ -1245,6 +1254,8 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 				if s == '':
 					return line
 
+				if 'audio level' in s:		# a new packet's first line: what follows isn't about the last one
+					self.after = False
 				if any(x in s for x in self.SKIPS):
 					return ''
 				if s.startswith(self.STARTSWITHS):
@@ -1252,20 +1263,24 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 
 				m = self.pat.match(s)
 				if not m:
+					if self.after:		# direwolf about the packet just shown (its APRS decode, an Error:): under its text
+						return self.indent + s + '\n'
 					return line
 
-
 				self.packets += 1
-				src, dst = m['sender'], m['destination']
-				head = f'{self.packets:4d}  {src:9s} -> {dst:14s}   '		# number, from, to (and path)
-				indent = ' ' * len(head)		# continuation lines start under the payload, however long dst ran
+				self.after = True
+				src = m['sender']
+				path = m['destination'].split(',')		# TO,DIGI1,DIGI2*
+				dst = path[0]
+				via = ','.join(path[1:])
+				head = self.head(self.packets, src, dst, via)
 				parts = re.split(r'<0x0[ad]>', m['payload'])		# the payload's own line breaks
 				lines = []
 				for p in parts:
 					p = p.strip()
 					if p:
 						lines.append(p)
-				payload = ('\n' + indent).join(lines)
+				payload = ('\n' + self.indent).join(lines)
 				return head + payload + '\n'
 			except Exception as e:
 				raise
