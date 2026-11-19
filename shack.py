@@ -1257,8 +1257,16 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 
 				self.packets += 1
 				src, dst = m['sender'], m['destination']
-				payload = ('\n' + ' ' * 36).join(p.strip() for p in re.split(r'<0x0[ad]>', m['payload']) if p.strip())		# 34: under the first line's payload
-				return f'{self.packets:4d}  {src:9s} -> {dst:14s}   {payload}\n'
+				head = f'{self.packets:4d}  {src:9s} -> {dst:14s}   '		# number, from, to (and path)
+				indent = ' ' * len(head)		# continuation lines start under the payload, however long dst ran
+				parts = re.split(r'<0x0[ad]>', m['payload'])		# the payload's own line breaks
+				lines = []
+				for p in parts:
+					p = p.strip()
+					if p:
+						lines.append(p)
+				payload = ('\n' + indent).join(lines)
+				return head + payload + '\n'
 			except Exception as e:
 				raise
 		else:
@@ -3728,7 +3736,7 @@ class Shack(QMainWindow):
 		self.setCentralWidget(self.split)
 
 		self.parts = (self.freq, self.vforow, self.mode, self.filrow, self.vol, self.sq, self.lamp, self.scr, self.rfg, self.agc, self.pa, self.ra, self.roof, self.disp, self.smeter, self.swr, self.power, self.pttrow, self.modemrow, self.scoperow, self.wf, self.sw['pre'], self.sw['att'], *self.lvl.values(), *self.rsp)		# everything that comes and goes with the radio
-		self.n = 0
+		self.n, self.polled = 0, time.monotonic()		# polled: when poll last ran
 		self.timer = QTimer(timeout=self.poll, interval=250)
 		self.timer.start()
 		self.shut()
@@ -4538,7 +4546,12 @@ class Shack(QMainWindow):
 	def poll(self):
 		if not isinstance(self.rig, (civ.Rig, cat.Rig, d75.Rig)):		# rspdx pushes its state; the others need asking
 			return
-		if time.monotonic() - self.rig.heard > 3:		# polled 4x a second, so 3 s of silence = gone
+		now = time.monotonic()
+		late, self.polled = now - self.polled, now		# the timer fires 4x a second: a long gap means shack itself was stopped (a breakpoint), not the radio
+		if late > 2:
+			self.rig.heard = now
+			return
+		if now - self.rig.heard > 3:		# polled 4x a second, so 3 s of silence = gone
 			return self.oops('The radio stopped answering.\n\nUnplugged or turned off?' + (' Or its TNC is in KISS mode.' if isinstance(self.rig, d75.Rig) else ''))
 		if isinstance(self.rig, d75.Rig):
 			if time.monotonic() - self.rig.last_set > 0.5:
