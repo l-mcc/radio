@@ -1233,6 +1233,7 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 	def __init__(self):
 		self.packets = 0
 		self.indent = ' ' * len(self.head(0, '', '', ''))		# where the text column starts: every line under a packet starts there
+		self.text = ''		# the last packet's first line of text
 		self.after = False		# the last line was a packet: what direwolf prints next about it (APRS decode, errors) goes in the text column
 		return
 
@@ -1264,6 +1265,8 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 				m = self.pat.match(s)
 				if not m:
 					if self.after:		# direwolf about the packet just shown (its APRS decode, an Error:): under its text
+						if s in (self.text, self.text[1:].strip()):		# the decode only repeats the text (a status report: '>' and the same words)
+							return ''
 						return self.indent + s + '\n'
 					return line
 
@@ -1280,6 +1283,7 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 					p = p.strip()
 					if p:
 						lines.append(p)
+				self.text = lines[0] if lines else ''		# for spotting direwolf's echo of it
 				payload = ('\n' + self.indent).join(lines)
 				return head + payload + '\n'
 			except Exception as e:
