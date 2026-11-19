@@ -3633,7 +3633,7 @@ class Shack(QMainWindow):
 		self.net, self.asked = QNetworkAccessManager(self), set()		# callook.info (where a US callsign is), the callsigns asked about since shack started
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
 		self.dec.onheard = self.heard
-		self.dec.rf = lambda: self.peak() if self.rig else None
+		self.dec.rf = lambda: self.sigpeak() if self.rig else None
 		self.dec.ontx, self.dec.txoff = self.pk_tx, lambda: self.pk_ui(False)
 		self.pkgen = 0		# counts packet Transmit picks: a start still waiting for the radio is dropped when another comes
 		self.pcmkey = 'pcm'		# the Audio level box's setting: 'pcm' for xara, 'pkpcm' for packet (direwolf plays much louder)
@@ -5023,7 +5023,7 @@ class Shack(QMainWindow):
 		a decoder heard a station: into bookmarks.db's heard table, with where the radio is (dial frequency, mode)
 	-------------------------------------------------------------------'''
 
-	def peak(self):		# the S-meter's highest in the last SIGWIN seconds, dB from S9 (None: no reading)
+	def sigpeak(self):		# the S-meter's highest in the last SIGWIN seconds, dB from S9 (None: no reading)
 		now = time.monotonic()
 		return max((v for t, v in self.sigs if now - t < self.SIGWIN), default=None)
 
@@ -5031,7 +5031,7 @@ class Shack(QMainWindow):
 		if self.rig:
 			mode = self.mode.currentText().removesuffix('-D')		# LSB-D (packet transmit on) is the same dial as LSB: one row
 			now = time.monotonic()
-			sig = None if via else self.peak()		# via a digipeater: the meter read the digipeater, not this station
+			sig = None if via else self.sigpeak()		# via a digipeater: the meter read the digipeater, not this station
 			self.bm.heard(call, self.freq.hz, mode, dec, level, fec, via, text, svc, sig)
 			now = time.monotonic()
 			if now - self.hdat > 0.2:		# a new packet (a digipeated one calls this twice in a row: digipeater, sender)
