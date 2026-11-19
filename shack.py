@@ -1231,6 +1231,7 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 					'must begin with "T#',
 					'just heard',
 					'scrutiny. ***',
+					'contains character other than',
 				]
 	W_DST, W_VIA = 9, 12		# column widths: destination, the digipeater path after it (cut with ~ when longer)
 	LEVEL = re.compile(r'^(?P<digi>Digipeater )?(?P<who>\S+)(?: \(probably (?P<prob>\S+)\))? audio level = (?P<level>\d+)\((?P<ms>[^)]*)\)\s+(?:(?P<fec>FX\.25|IL2P)\s+)?(?P<bars>\S*)')		# eg  Digipeater KB9PVH audio level = 100(28/28)   FX.25   00000____
