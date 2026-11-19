@@ -1234,7 +1234,9 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 					'contains character other than',
 				]
 	W_DST, W_VIA = 9, 12		# column widths: destination, the digipeater path after it (cut with ~ when longer)
-	LEVEL = re.compile(r'^(?P<digi>Digipeater )?(?P<who>\S+)(?: \(probably (?P<prob>\S+)\))? audio level = (?P<level>\d+)\((?P<ms>[^)]*)\)\s+(?:(?P<fec>FX\.25|IL2P)\s+)?(?P<bars>\S*)')		# eg  Digipeater KB9PVH audio level = 100(28/28)   FX.25   00000____
+	LEVEL = re.compile(r'^(?P<digi>Digipeater )?(?:(?P<who>\S+)(?: \(probably (?P<prob>\S+)\))? )?audio level = (?P<level>\d+)\((?P<ms>[^)]*)\)\s+(?:(?P<fec>FX\.25|IL2P)\s+)?(?P<bars>\S*)')		# eg  Digipeater KB9PVH audio level = 100(28/28)   FX.25   00000____
+	LOOSE = re.compile(r'^\[[^\]]+\]\s*(?P<sender>[^>\s]+)>(?P<destination>[^:]+):(?P<payload>.*)$')		# a frame whose addresses have bit errors (W;LCF-7>NODES"-8:...): pat doesn't take it
+	NETROM = re.compile(r'^(\(UI cmd[^)]*\))?<0xff>')		# a NET/ROM node's routing table: binary, for the nodes, not for reading
 	W_TEXT = 70		# text lines longer than this are wrapped at a space (shorter ones are left alone: ASCII art keeps its spacing)
 
 	def __init__(self, rf=None):
@@ -1256,7 +1258,7 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 		rf = '-' if sig is None else sunits(sig)
 		ms = '(' + m['ms'] + ')'
 		fec = m['fec'] or 'AX.25'
-		digi = 'digi ' + (m['prob'] or m['who']) if m['digi'] else ''
+		digi = 'digi ' + (m['prob'] or m['who'] or '?') if m['digi'] else ''
 		return f'rf {rf:7s} audio {m["level"]:>3s} {ms:9s} {fec:5s}  {m["bars"]:10s} {digi}'.rstrip()
 
 	def head(self, n, src, dst, via):		# the fixed columns before the text
@@ -1288,6 +1290,10 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 					return ''
 
 				m = self.pat.match(s)
+				broken = False
+				if not m:
+					m = self.LOOSE.match(s)
+					broken = bool(m)
 				if not m:
 					if self.after:		# direwolf about the packet just shown (its APRS decode, an Error:): under its text
 						if s in (self.text, self.text[1:].strip()):		# the decode only repeats the text (a status report: '>' and the same words)
@@ -1302,7 +1308,14 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 				dst = path[0]
 				via = ','.join(path[1:])
 				head = self.head(self.packets, src, dst, via)
-				parts = re.split(r'<0x0[ad]>', m['payload'])		# the payload's own line breaks
+				payload = m['payload']
+				if dst.startswith('NODES') or self.NETROM.match(payload):
+					payload = 'NET/ROM routing table'
+				elif broken:
+					payload = ''
+				if broken:
+					payload = (payload + ', ' if payload else '') + 'broken frame (bit errors at the sender)'
+				parts = re.split(r'<0x0[ad]>', payload)		# the payload's own line breaks
 				lines = []
 				for p in parts:
 					p = p.strip()
