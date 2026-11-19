@@ -1218,16 +1218,19 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 	last_lookup_time = time.time()
 
 	STARTSWITHS =	(
-							'Station address,',
-		     				'Digi2 Address "" is empty.',
-							'Audio input level',
+							# 'Station address,',
+		     				# 'Digi2 Address "" is empty.',
+							# 'Audio input level',
 	     			 	)
 	SKIPS =	[
-					'audio level',
+					'"" is empty',
+					# 'audio level',
 					'UNKNOWN vendor',
 					'is obsolete',
 					'(Not AX.25)',		# noise direwolf took for a frame
-					
+					'must begin with "T#',
+					'just heard',
+					'scrutiny. ***',
 				]
 	W_DST, W_VIA = 9, 12		# column widths: destination, the digipeater path after it (cut with ~ when longer)
 	W_TEXT = 70		# text lines longer than this are wrapped at a space (shorter ones are left alone: ASCII art keeps its spacing)
