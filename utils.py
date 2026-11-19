@@ -256,3 +256,25 @@ def is_callsign(callsign):
 # is_callsign
 
 
+'''-------------------------------------------------------------------
+	words into lines of at most max_length (a word longer than that gets a line of its own)
+-------------------------------------------------------------------'''
+
+def split_long_string(long_string, max_length=30):
+	words = long_string.split()
+	result = []
+	current = ''
+	for word in words:
+		if current and len(current) + len(word) + 1 > max_length:
+			current = re.sub(r' {2,}', ' ', current)
+			current = current.strip()
+			result.append(current)
+			current = ''
+		if current:
+			current += ' '
+		current += word
+	if current:
+		result.append(current)
+	return result
+# split_long_string
+

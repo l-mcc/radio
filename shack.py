@@ -1226,9 +1226,11 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 					'audio level',
 					'UNKNOWN vendor',
 					'is obsolete',
+					'(Not AX.25)',		# noise direwolf took for a frame
 					
 				]
 	W_DST, W_VIA = 9, 12		# column widths: destination, the digipeater path after it (cut with ~ when longer)
+	W_TEXT = 70		# text lines longer than this are wrapped at a space (shorter ones are left alone: ASCII art keeps its spacing)
 
 	def __init__(self):
 		self.packets = 0
@@ -1236,6 +1238,11 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 		self.text = ''		# the last packet's first line of text
 		self.after = False		# the last line was a packet: what direwolf prints next about it (APRS decode, errors) goes in the text column
 		return
+
+	def wrap(self, text):		# one line of text -> lines no longer than W_TEXT
+		if len(text) <= self.W_TEXT:
+			return [text]
+		return utils.split_long_string(text, self.W_TEXT)
 
 	def head(self, n, src, dst, via):		# the fixed columns before the text
 		if len(via) > self.W_VIA:
@@ -1267,7 +1274,7 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 					if self.after:		# direwolf about the packet just shown (its APRS decode, an Error:): under its text
 						if s in (self.text, self.text[1:].strip()):		# the decode only repeats the text (a status report: '>' and the same words)
 							return ''
-						return self.indent + s + '\n'
+						return self.indent + ('\n' + self.indent).join(self.wrap(s)) + '\n'
 					return line
 
 				self.packets += 1
@@ -1282,8 +1289,8 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 				for p in parts:
 					p = p.strip()
 					if p:
-						lines.append(p)
-				self.text = lines[0] if lines else ''		# for spotting direwolf's echo of it
+						lines += self.wrap(p)
+				self.text = next((p.strip() for p in parts if p.strip()), '')		# the first line before wrapping, for spotting direwolf's echo of it
 				payload = ('\n' + self.indent).join(lines)
 				return head + payload + '\n'
 			except Exception as e:
