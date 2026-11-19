@@ -1233,10 +1233,13 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 					'scrutiny. ***',
 				]
 	W_DST, W_VIA = 9, 12		# column widths: destination, the digipeater path after it (cut with ~ when longer)
+	LEVEL = re.compile(r'^(?P<digi>Digipeater )?(?P<who>\S+)(?: \(probably (?P<prob>\S+)\))? audio level = (?P<level>\d+)\((?P<ms>[^)]*)\)\s+(?:(?P<fec>FX\.25|IL2P)\s+)?(?P<bars>\S*)')		# eg  Digipeater KB9PVH audio level = 100(28/28)   FX.25   00000____
 	W_TEXT = 70		# text lines longer than this are wrapped at a space (shorter ones are left alone: ASCII art keeps its spacing)
 
-	def __init__(self):
+	def __init__(self, rf=None):
 		self.packets = 0
+		self.rf = rf		# rf(): the transceiver's S-meter for this packet (dB from S9, None = no meter)
+		self.sigline, self.sigt = '', 0		# the signal line from the latest 'audio level', shown above its packet; when (monotonic): stale after a second (its packet was skipped)
 		self.indent = ' ' * len(self.head(0, '', '', ''))		# where the text column starts: every line under a packet starts there
 		self.text = ''		# the last packet's first line of text
 		self.after = False		# the last line was a packet: what direwolf prints next about it (APRS decode, errors) goes in the text column
@@ -1246,6 +1249,14 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 		if len(text) <= self.W_TEXT:
 			return [text]
 		return utils.split_long_string(text, self.W_TEXT)
+
+	def signal(self, m):		# direwolf's 'audio level' line -> the signal line: RF, audio level (mark/space), error correction, which decoders got it, digipeater
+		sig = self.rf() if self.rf else None
+		rf = '-' if sig is None else sunits(sig)
+		ms = '(' + m['ms'] + ')'
+		fec = m['fec'] or 'AX.25'
+		digi = 'digi ' + (m['prob'] or m['who']) if m['digi'] else ''
+		return f'      rf {rf:7s} audio {m["level"]:>3s} {ms:9s} {fec:5s}  {m["bars"]:10s} {digi}'.rstrip() + '\n'
 
 	def head(self, n, src, dst, via):		# the fixed columns before the text
 		if len(via) > self.W_VIA:
@@ -1265,8 +1276,11 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 				if s == '':
 					return line
 
-				if 'audio level' in s:		# a new packet's first line: what follows isn't about the last one
+				lv = self.LEVEL.match(s)
+				if lv:		# a new packet's first line: what follows isn't about the last one
 					self.after = False
+					self.sigline, self.sigt = self.signal(lv), time.monotonic()
+					return ''
 				if any(x in s for x in self.SKIPS):
 					return ''
 				if s.startswith(self.STARTSWITHS):
@@ -1295,7 +1309,9 @@ class Direwolf:		# Larry's raw direwolf parser (2024's Direwolf.proc), for right
 						lines += self.wrap(p)
 				self.text = next((p.strip() for p in parts if p.strip()), '')		# the first line before wrapping, for spotting direwolf's echo of it
 				payload = ('\n' + self.indent).join(lines)
-				return head + payload + '\n'
+				sigline = self.sigline if time.monotonic() - self.sigt < 1 else ''		# direwolf prints the frame right after its level line; our own sent frames have none
+				self.sigline = ''
+				return sigline + head + payload + '\n'
 			except Exception as e:
 				raise
 		else:
@@ -1944,6 +1960,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 		self.oniq, self.iq = None, False		# oniq(file or None): the RSPdx starts / stops recording I/Q (shack sets it); iq: it is, alongside the audio
 		self.lines = {}		# JS8: offset Hz: (cursor at the start of that message's line, when its last frame came, the line's start); a message's frames join one line
 		self.logging, self.logged = False, None		# Log button; logged: the decoder the file's last header was for
+		self.rf = None		# rf(): the transceiver's S-meter at its highest for the last packet, dB from S9, None = no meter (shack sets it)
 		self.onheard, self.pkh = None, None		# onheard(call, decoder, level, fec, via, text, svc): a station was heard (shack sets it); pkh: direwolf's 'audio level' line, waiting for its packet line
 		self.ptx = None		# packet transmit: (card, PTT port) while it's on, None = receive only
 		self.ontx, self.txoff = None, None		# ontx(on): right-click > Packet > Transmit; txoff(): transmit ended with the decoder (shack sets both)
@@ -2625,7 +2642,7 @@ class Decoders:		# decode.py's RTTY and CW, VARA (xara-monitor), ARDOP (ardopcf)
 				self.write_log(txt)
 			return
 		if self.compact:
-			self.dw = self.dw or Direwolf()
+			self.dw = self.dw or Direwolf(self.rf)
 			txt = self.dw(txt)
 			if not txt:
 				return
@@ -3616,6 +3633,7 @@ class Shack(QMainWindow):
 		self.net, self.asked = QNetworkAccessManager(self), set()		# callook.info (where a US callsign is), the callsigns asked about since shack started
 		self.dec = Decoders(lambda: isinstance(self.rig, Rspdx) and self.rig.set('digi', True))		# Digital out: the RSPdx only
 		self.dec.onheard = self.heard
+		self.dec.rf = lambda: self.peak() if self.rig else None
 		self.dec.ontx, self.dec.txoff = self.pk_tx, lambda: self.pk_ui(False)
 		self.pkgen = 0		# counts packet Transmit picks: a start still waiting for the radio is dropped when another comes
 		self.pcmkey = 'pcm'		# the Audio level box's setting: 'pcm' for xara, 'pkpcm' for packet (direwolf plays much louder)
@@ -5005,11 +5023,15 @@ class Shack(QMainWindow):
 		a decoder heard a station: into bookmarks.db's heard table, with where the radio is (dial frequency, mode)
 	-------------------------------------------------------------------'''
 
+	def peak(self):		# the S-meter's highest in the last SIGWIN seconds, dB from S9 (None: no reading)
+		now = time.monotonic()
+		return max((v for t, v in self.sigs if now - t < self.SIGWIN), default=None)
+
 	def heard(self, call, dec, level=None, fec='', via='', text='', svc=()):
 		if self.rig:
 			mode = self.mode.currentText().removesuffix('-D')		# LSB-D (packet transmit on) is the same dial as LSB: one row
 			now = time.monotonic()
-			sig = None if via else max((v for t, v in self.sigs if now - t < self.SIGWIN), default=None)		# via a digipeater: the meter read the digipeater, not this station
+			sig = None if via else self.peak()		# via a digipeater: the meter read the digipeater, not this station
 			self.bm.heard(call, self.freq.hz, mode, dec, level, fec, via, text, svc, sig)
 			now = time.monotonic()
 			if now - self.hdat > 0.2:		# a new packet (a digipeated one calls this twice in a row: digipeater, sender)
