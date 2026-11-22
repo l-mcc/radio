@@ -32,7 +32,7 @@ Receive audio for the decoders comes from the radio's USB sound card (ALSA). Not
 
 1. System packages:
    ```
-   sudo apt install git python3-venv python3-pip
+   sudo apt install git python3-venv python3-pip pulseaudio-utils
    ```
 2. Your user needs the serial ports (log out and back in afterwards):
    ```
@@ -46,7 +46,7 @@ Receive audio for the decoders comes from the radio's USB sound card (ALSA). Not
 4. Python packages, in a venv so they don't touch the system's:
    ```
    python3 -m venv ~/radio-venv
-   ~/radio-venv/bin/pip install PyQt6 pyserial numpy aiohttp
+   ~/radio-venv/bin/pip install PyQt6 pyserial numpy aiohttp prodict
    ```
 
 ## Run
@@ -69,7 +69,7 @@ Pick one in the **Decoder** list. The first four are built in, the others run an
 | VARA | `xara-monitor` from [xara](https://github.com/x0rro/xara) (Rust): `sudo apt install libasound2-dev libpulse-dev pkg-config cargo`, then `cargo build --release --locked` in its folder |
 | ARDOP | `ardopcf` from [pflarue/ardop](https://github.com/pflarue/ardop) (`make`; needs `libasound2-dev`), plus `sudo apt install libasound2-plugins` |
 | Packet | `direwolf` (`sudo apt install direwolf`, or build from source) |
-| JS8 | `js8call` (`sudo apt install js8call`). Setup is in shack's Help |
+| JS8 | `js8call`: the [JS8Call-improved](https://github.com/JS8Call-improved/JS8Call-improved/releases) AppImage (glibc 2.39+, e.g. Debian trixie) linked as `~/.local/bin/js8call`, or `sudo apt install js8call` (2.2). Setup is in shack's Help |
 | FT4, FT8, WSPR | `jt9` and `wsprd` from `sudo apt install wsjtx` |
 
 The **Log** button writes what's decoded to `vara.log`, `psk31.log`, ... next to shack.py.
