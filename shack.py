@@ -68,7 +68,7 @@ HELP = '''
 <p>Stations the Packet decoder has heard, kept in bookmarks.db: one row for each callsign at each dial frequency. The tab shows every frequency on every band and fills in as packets arrive (click MHz to group them by frequency). Hits counts its packets; Last is when the latest came (today: the time, otherwise the date too); FEC says FX.25 or IL2P (blank: plain AX.25); Svc is what the station has said it offers, gathered from its packets: bbs (a mailbox: 'Mail for' beacons, a BBS greeting), node, em (Winlink / email), chat, aprs, digi (it relayed someone else's packet); blank = nothing seen yet; Miles is how far it is from your grid (decoder right-click > My grid): from the grid in its beacon if it sends one, otherwise US callsigns are looked up once at callook.info (the FCC's address for the licence; other countries stay blank); Clicked counts your double-clicks on it; Via is the digipeater when you didn't hear the station itself (the digipeater gets its own row: it's the one you heard); Text is its last beacon. The station the latest packet came from is green (with its digipeater, if it came through one), until the next packet. Rest the mouse on a row for when it was first heard, direwolf's audio level, the signal (the transceiver's S-meter at its highest during the station's latest packet; heard direct only, not through a digipeater; none on the RSPdx) and the whole text. Click a column heading to sort by it, again for the other way; remembered. Double-click the callsign: its QRZ page (the same window the decoders use). Double-click anywhere else on the row: go to that frequency and mode with the decoder that heard it. Right-click: Connect to it (packet Transmit on), look up on QRZ, Highlight it (light gold, every row with that callsign and SSID on every band, remembered: say for the stations you've connected to; the same item takes it off), forget one station, or clear the whole list.</p>
 
 <h3>IC-705, Xiegu x6200</h3>
-<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (0-10 W, in tenths); drag the slider (it's sent when you let go), or for one step at a time (1 %, 0.1 W on the Xiegu, 1 W on the FTdx10) turn the wheel over it, or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on (not on the Xiegu: its firmware has no NB / NR level or AGC over CI-V, so those are hidden). The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. The IC-705 can't say over CI-V which one it's on, so opening it puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. The Xiegu (OpenX6X00 firmware) says which: the button follows its own A/B key. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. To send mail: right-click > Compose a message (To, Cc, Subject, text; Put in the outbox), then double-click a gateway (or right-click it > Connect): shack sets Modem to Transmit if it isn't, Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. When Pat is done (or you stop it) shack sets Modem back to Off. The menu says how many messages are waiting in the outbox. Right-click > Stop Pat gives up on a connect. Right-click a gateway > Add as a Pat alias puts it in Pat's config (connect_aliases, named like ko4hjo-7100.5) for pat connect and Pat's own Connect list; it shows with a ★ here, and the same menu item removes it. Right-click > Mail opens Pat's mailbox here (no browser): Inbox, Outbox, Sent, Archive; unread messages are bold and are marked read when you open them; Reply (to the sender), Reply all, Save attachments, Archive, Delete, Compose. After a connect the bottom line says how many are unread. BUSY in the bottom left corner of the window (there while the modem runs) is red while xara (the modem) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR, live; after it unkeys, the highest of each during that transmission (marked peak), until the next. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed. Screensaver (Xiegu with the OpenX6X00 firmware): On turns the radio's screensaver on or off, the box is how many minutes without use before it comes. It goes over WiFi to the radio's web page (x6200.local, the RIGS web entry in civ.py), not over the USB cable, so it's greyed until the radio answers there; it's read when the radio is opened.</p>
+<p>Frequency, VFO A/B, mode, filter, volume, RF gain, AGC, Preamp, ATT, bookmarks (they keep filter, volume, RF gain, AGC, Preamp, ATT, NB and NR and their levels; never TX power; and the decoder that was picked when you saved, Off included: double-click starts it. Older bookmarks leave the decoder alone until you Save them again. A bookmark also keeps the VFO it was saved on, one for every radio like its mode, and double-click goes back to that VFO first, so VFO B can stay on one thing, broadcast FM say, while A does the rest; a bookmark that never had one gets the VFO you double-click it on), S-meter, transmit power and PTT. The PTT button keys the radio (click again to stop; it unkeys itself after 30 s), and TX/RX next to it shows what the radio reports, whoever keyed it. SWR is the radio's meter, read while it transmits (it keeps the last reading). Power is % of the maximum on the 705 and watts on the Xiegu (0-10 W, in tenths); drag the slider (it's sent when you let go), or for one step at a time (1 %, 0.1 W on the Xiegu, 1 W on the FTdx10) turn the wheel over it, or click it and use the arrow keys. Noise blanker and Noise reduction switch the radio's own NB and NR on and off; the % box next to each is its level, usable while it's on (not on the Xiegu: its firmware has no NB / NR level or AGC over CI-V, so those are hidden). The PTT and Power lines are greyed outside the ham bands, and the PTT port refuses to key there too. Filter picks the radio's FIL1, FIL2 or FIL3 for the current mode: three presets per mode, each with its own width (set in the radio's menu); the width shown is the radio's report for the one in use (none in FM). Changing mode from here lands on FIL1. A red SPLIT button appears next to VFO A / VFO B whenever the radio is in split (it would transmit on the other VFO's frequency); click it to turn split off. VFO A and B pick the radio's VFO. The IC-705 can't say over CI-V which one it's on, so opening it puts it on the VFO shack last used with it (A the first time) and lights that button; switching with the radio's own button doesn't show here. The Xiegu (OpenX6X00 firmware) says which: the button follows its own A/B key. TX shows red while transmitting. Modem: xara, the VARA modem, on this radio's sound card. Listen starts it (callsign: Modem.CALL in shack.py; starting bandwidth: the VARA decoder's, right-click > VARA; the radio goes to VFO A, split off, USB-D) so Pat and OpenSlot can connect to it on ports 8100 and 8300; it hears but can't transmit. Transmit also lets it play into the radio and key it through the PTT port: shack first sets the sound card's level for this radio (and the IC-705's RF power to 100 %), and won't start if the radio is still in split or didn't go to USB-D on VFO A. The levels per radio are the vara= entries in civ.py and cat.py (IC-705, FTdx10). Its lines scroll in the text box and go to xara.log next to shack.py. The decoders and the Spectrum strip stop while it runs (one program at a time can have the radio's sound card) and come back with Off. Gateways (the tab next to Bookmarks): the Winlink VARA HF gateways on the band the radio is on, from rms.db (right-click > Download a fresh list runs rms.py), ones heard from in the last 6 hours first, then nearest first. To send mail: right-click > Compose a message (To, Cc, Subject, text; Put in the outbox), then double-click a gateway (or right-click it > Connect): shack sets Modem to Transmit if it isn't, Pat connects to it (it moves the dial and puts it back afterwards), sends what's in the outbox and fetches your mail; what Pat prints scrolls in the text box. When Pat is done (or you stop it) shack sets Modem back to Off. The menu says how many messages are waiting in the outbox. Right-click > Stop Pat gives up on a connect. Right-click a gateway > Add as a Pat alias puts it in Pat's config (connect_aliases, named like ko4hjo-7100.5) for pat connect and Pat's own Connect list; it shows with a ★ here, and the same menu item removes it. Right-click > Mail opens Pat's mailbox here (no browser): Inbox, Outbox, Sent, Archive; unread messages are bold and are marked read when you open them; Reply (to the sender), Reply all, Save attachments, Archive, Delete, Compose. After a connect the bottom line says how many are unread. BUSY in the bottom left corner of the window (there while the modem runs) is red while xara (the modem) hears a signal on the frequency, grey otherwise. While the radio transmits, the PTT line shows its own meters: watts, ALC (0 to 1; for VARA keep it near 0) and SWR, live; after it unkeys, the highest of each during that transmission (marked peak), until the next. With Modem on Transmit a TX level line appears: Tune makes xara send a steady tone (click again to stop; 30 s at most; it needs xara's command port, so not while Pat or OpenSlot is connected), and Audio level is the sound card's PCM level into the radio: turn it while tuning until the power is where you want it and ALC barely moves. It's remembered for each radio. PTT port 4532 on the status bar answers like Hamlib's rigctld for the radio that's open here: frequency, mode, VFO, split and PTT (xara, Pat, rigctl -m 2, and JS8Call / WSJT-X / fldigi set to Hamlib NET rigctl); the radio is unkeyed whenever a program that keyed it goes away, and whenever it is closed. Screensaver (Xiegu with the OpenX6X00 firmware): On turns the radio's screensaver on or off, the box is how many minutes without use before it comes. It goes over WiFi to the radio's web page (x6200.local, the RIGS web entry in civ.py), not over the USB cable, so it's greyed until the radio answers there; it's read when the radio is opened.</p>
 <p>Scope (IC-705): Waterfall shows the radio's own band scope, sent over CI-V about four times a second: spectrum on top, waterfall under it, red line at the dial. Click anywhere on it to tune there; Shift-click a signal to tune so it lands at 1500 Hz audio, the middle of the passband where VARA, ARDOP and the decoders listen (USB and LSB; other modes tune straight there). Pause freezes it and the audio spectrum strip together (either Pause button; both light up) for a closer look at a signal; the radio keeps tuning. Turning it on puts the radio's scope in center mode; the span is how far it reaches either side of the dial, Ref the reference level (lower = weak signals brighter). Changing the span starts the waterfall over. The x6200 doesn't send its scope over CI-V (firmware as of 2026-11), so it has no Scope line.</p>
 
 <h3>FTdx10</h3>
@@ -386,11 +386,16 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 		opens (or makes) the database; a new one gets rspdx's settings.db rows copied in
 	-------------------------------------------------------------------'''
 
+	BMCOLS = ("(hz INTEGER NOT NULL, mode TEXT NOT NULL, vfo TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', hits INTEGER NOT NULL DEFAULT 1,"		# vfo: 'A', 'B' or '' (never saved on a radio with VFOs)
+		" settings TEXT NOT NULL DEFAULT '{}', updated TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (hz, mode))")
+
 	def __init__(self, path, old):
 		new = not Path(path).exists()
 		self.db = sqlite3.connect(path)
-		self.db.execute("CREATE TABLE IF NOT EXISTS bookmarks (hz INTEGER NOT NULL, mode TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', hits INTEGER NOT NULL DEFAULT 1,"
-			" settings TEXT NOT NULL DEFAULT '{}', updated TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (hz, mode))")
+		self.db.execute('CREATE TABLE IF NOT EXISTS bookmarks ' + self.BMCOLS)
+		have = {r[1] for r in self.db.execute('PRAGMA table_info(bookmarks)')}
+		if 'vfo' not in have:		# added 2026-11-26
+			self.vfo_column()
 		self.db.execute("CREATE TABLE IF NOT EXISTS last (radio TEXT PRIMARY KEY, hz INTEGER NOT NULL, mode TEXT NOT NULL, settings TEXT NOT NULL DEFAULT '{}')")		# where each radio was left
 		self.db.execute("CREATE TABLE IF NOT EXISTS prefs (k TEXT PRIMARY KEY, v TEXT NOT NULL)")		# the table's sort
 		self.db.execute("CREATE TABLE IF NOT EXISTS heard (call TEXT NOT NULL, hz INTEGER NOT NULL, mode TEXT NOT NULL, dec TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 1, first TEXT NOT NULL, last TEXT NOT NULL,"
@@ -406,6 +411,33 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 		self.db.commit()
 		return
 	# __init__
+
+	'''-------------------------------------------------------------------
+		one-time: the table rebuilt with vfo next to mode; each row's vfo taken out of the radios' settings (the first radio that has one)
+	-------------------------------------------------------------------'''
+
+	def vfo_column(self):
+		rows = self.db.execute('SELECT hz, mode, name, hits, settings, updated FROM bookmarks').fetchall()
+		self.db.execute('BEGIN')
+		self.db.execute('CREATE TABLE bookmarks_new ' + self.BMCOLS)
+		n = 0
+		for hz, mode, name, hits, settings, updated in rows:
+			s = json.loads(settings)
+			vfo = ''
+			for radio in s.values():
+				if isinstance(radio, dict) and 'vfo' in radio:		# 'decoder' is a string
+					v = radio.pop('vfo')
+					if not vfo and v in ('A', 'B'):
+						vfo = v
+			if vfo:
+				n += 1
+			self.db.execute('INSERT INTO bookmarks_new (hz, mode, vfo, name, hits, settings, updated) VALUES (?, ?, ?, ?, ?, ?, ?)', (hz, mode, vfo, name, hits, json.dumps(s), updated))
+		self.db.execute('DROP TABLE bookmarks')
+		self.db.execute('ALTER TABLE bookmarks_new RENAME TO bookmarks')
+		self.db.commit()
+		log.info(f'bookmarks: vfo column added, {n} of {len(rows)} had a VFO')
+		return
+	# vfo_column
 
 	'''-------------------------------------------------------------------
 		one-time copy of rspdx's settings.db (its -1 = never saved, left out)
@@ -434,8 +466,8 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 
 	def list(self, col=3, down=True):
 		out = []
-		for hz, mode, name, hits, s in self.db.execute('SELECT hz, mode, name, hits, settings FROM bookmarks ORDER BY hz'):
-			out.append(dict(hz=hz, mode=mode, name=name, hits=hits, settings=json.loads(s)))
+		for hz, mode, vfo, name, hits, s in self.db.execute('SELECT hz, mode, vfo, name, hits, settings FROM bookmarks ORDER BY hz'):
+			out.append(dict(hz=hz, mode=mode, vfo=vfo, name=name, hits=hits, settings=json.loads(s)))
 		k = self.SORTS[col]
 		if k == 'name':
 			named = sorted((b for b in out if b['name']), key=lambda b: b['name'].casefold(), reverse=down)
@@ -458,22 +490,28 @@ class Bookmarks:		# bookmarks.db next to shack.py: one list for every radio; a r
 	'''-------------------------------------------------------------------
 		Save: adds the bookmark with its name, or updates this radio's settings in it (other radios' settings, name and hits stay)
 		dec: the decoder to start with it, kept beside the radios as settings['decoder'] (one for every radio); None leaves it as it was
+		vfo: the VFO it's on, one for every radio like mode; '' (the RSPdx) leaves it as it was
 	-------------------------------------------------------------------'''
 
-	def save(self, radio, hz, mode, settings, name='', dec=None):
+	def save(self, radio, hz, mode, settings, name='', dec=None, vfo=''):
 		b = self.find(hz, mode)
 		s = b['settings'] if b else {}
 		s[radio] = settings
 		if dec:
 			s['decoder'] = dec
-		self.db.execute('INSERT INTO bookmarks (hz, mode, name, settings) VALUES (?, ?, ?, ?) ON CONFLICT (hz, mode) DO UPDATE SET settings = excluded.settings, updated = CURRENT_TIMESTAMP',
-			(hz, mode, name, json.dumps(s)))
+		self.db.execute("INSERT INTO bookmarks (hz, mode, vfo, name, settings) VALUES (?, ?, ?, ?, ?) ON CONFLICT (hz, mode) DO UPDATE SET settings = excluded.settings,"
+			" vfo = CASE WHEN excluded.vfo != '' THEN excluded.vfo ELSE vfo END, updated = CURRENT_TIMESTAMP",
+			(hz, mode, vfo, name, json.dumps(s)))
 		self.db.commit()
 		return
 	# save
 
 	def picked(self, b):
 		self.db.execute('UPDATE bookmarks SET hits = hits + 1 WHERE hz = ? AND mode = ?', (b['hz'], b['mode']))
+		self.db.commit()
+
+	def set_vfo(self, b, vfo):
+		self.db.execute('UPDATE bookmarks SET vfo = ? WHERE hz = ? AND mode = ?', (vfo, b['hz'], b['mode']))
 		self.db.commit()
 
 	def rename(self, b, name):
@@ -5017,8 +5055,11 @@ class Shack(QMainWindow):
 		if not self.rig or not self.can(b):
 			return self.statusBar().showMessage(f"The {self.radio.currentText()} can't tune {b['hz'] / 1e6:.6f} {b['mode']}", 5000)
 		self.bm.picked(b)
-		v = (b['settings'].get(self.radio.currentText()) or {}).get('vfo')		# the VFO it was saved on
-		if v in ('A', 'B') and isinstance(self.rig, (civ.Rig, cat.Rig, d75.Rig)) and v != self.rig.vfo and not self.mdm:		# the modem stays on VFO A
+		v = b['vfo']		# the VFO it was saved on
+		vfos = isinstance(self.rig, (civ.Rig, cat.Rig, d75.Rig))
+		if not v and vfos and self.rig.vfo in ('A', 'B'):		# never saved with a VFO: it gets the one it's tuned on now
+			self.bm.set_vfo(b, self.rig.vfo)
+		if v in ('A', 'B') and vfos and v != self.rig.vfo and not self.mdm:		# the modem stays on VFO A
 			self.pick_vfo(v)
 			rig = self.rig
 			QTimer.singleShot(400, lambda: self.rig is rig and self.bm_tune(b))		# once the radio is on that VFO (the FTdx10 tunes the VFO it last reported)
@@ -5227,12 +5268,14 @@ class Shack(QMainWindow):
 		if not self.rig:
 			return
 		radio, hz, mode, s = self.radio.currentText(), self.freq.hz, self.mode.currentText(), self.settings()
+		vfo = s.pop('vfo', '')		# a column of its own, not a radio setting
 		name = ''
 		if not self.bm.find(hz, mode):		# a new one: ask for its name; an existing one keeps its own
 			name, ok = QInputDialog.getText(self, 'Save bookmark', f'Name for {hz / 1e6:.6f} {mode}:')
 			if not ok:
 				return
-		self.bm.save(radio, hz, mode, s, name.strip(), self.dec.pick.currentText() if self.dec.row.isEnabled() else None)		# modem running: the bookmark keeps the decoder it had
+		dec = self.dec.pick.currentText() if self.dec.row.isEnabled() else None		# modem running: the bookmark keeps the decoder it had
+		self.bm.save(radio, hz, mode, s, name.strip(), dec, vfo)
 		if isinstance(self.rig, Rspdx):		# a CI-V radio remembers where it was by itself
 			self.bm.set_last(radio, hz, mode, s)
 		self.show_bms()
